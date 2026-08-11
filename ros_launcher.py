@@ -1,9 +1,12 @@
+import os
 import tkinter as tk
 import paramiko
 
-RASPBERRY_IP = "172.20.10.2"
-USERNAME = "raspberry"   # SSH 사용자 이름 확인 필요
-PASSWORD = "1234"
+# 공개 저장소이므로 비밀번호는 코드에 두지 않는다.
+#   export RASPBERRY_PASSWORD='...'   실행 전에 설정
+RASPBERRY_IP = os.environ.get("RASPBERRY_IP", "192.168.0.2")
+USERNAME = os.environ.get("RASPBERRY_USER", "pi")
+PASSWORD = os.environ.get("RASPBERRY_PASSWORD")
 
 COMMAND = """
 source /opt/ros/jazzy/setup.bash
@@ -12,6 +15,10 @@ ros2 launch open_manipulator_bringup omx_f.launch.py
 """
 
 def run_ros_launch():
+    if not PASSWORD:
+        status_label.config(text="RASPBERRY_PASSWORD 환경변수가 설정되지 않았습니다")
+        return
+
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
