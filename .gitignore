@@ -3,6 +3,9 @@
 __pycache__/
 *.py[cod]
 
+.venv/
+venv/
+
 # read_sensors.py --csv 로 남기는 측정 로그
 *.csv
 

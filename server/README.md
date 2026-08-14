@@ -20,23 +20,35 @@
 
 ## 설치
 
-라즈베리파이에서:
+라즈베리파이에서. 하드웨어를 직접 다루는 패키지는 apt로, 나머지는 venv에 받는다.
 
 ```bash
 sudo apt update
-sudo apt install -y python3-serial python3-opencv
-pip install --break-system-packages fastapi "uvicorn[standard]"
+sudo apt install -y python3-venv python3-serial python3-opencv
 ```
 
-`python3-opencv` 는 카메라용이다. pip로 opencv를 받으면 라즈베리파이에서는
-매우 느리므로 apt를 쓴다.
+`python3-serial`(센서)과 `python3-opencv`(카메라)를 apt로 받는 이유는, ARM에서
+pip로 설치하면 빌드에 아주 오래 걸리거나 실패하기 때문이다.
+
+```bash
+cd ~/RaspberryPiRemoteController
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install fastapi "uvicorn[standard]"
+```
+
+`--system-site-packages` 가 있어야 venv 안에서 apt로 설치한 `cv2` 와 `serial` 을
+볼 수 있다. 빼먹으면 카메라와 센서가 동작하지 않는다.
+
+Ubuntu 24.04는 시스템 파이썬에 pip 설치를 막아 두었다(PEP 668).
+`--break-system-packages` 로 우회할 수도 있지만, 시스템 패키지와 충돌할 수 있어
+venv를 쓰는 편이 안전하다.
 
 ## 실행
 
 저장소 루트에서:
 
 ```bash
-uvicorn server.main:app --host 0.0.0.0 --port 8000
+.venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
 `--host 0.0.0.0` 이 있어야 다른 기기에서 접근할 수 있다.
