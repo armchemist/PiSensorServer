@@ -48,10 +48,15 @@ venv를 쓰는 편이 안전하다.
 저장소 루트에서:
 
 ```bash
-.venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 8000
+.venv/bin/uvicorn server.main:app --host :: --port 8000
 ```
 
-`--host 0.0.0.0` 이 있어야 다른 기기에서 접근할 수 있다.
+`--host` 를 주지 않으면 localhost에만 묶여서 다른 기기가 접근할 수 없다.
+
+`0.0.0.0` 이 아니라 `::` 인 이유가 있다. `0.0.0.0` 은 **IPv4에만** 귀를 기울인다.
+아이폰 핫스팟처럼 IPv6 전용 네트워크에서는 클라이언트가 IPv6로 접속하기 때문에
+연결이 거부된다. `::` 는 IPv6 전체 주소를 뜻하고, 리눅스에서는 IPv4 연결도 함께
+받으므로(듀얼 스택) 어느 네트워크에서든 동작한다.
 
 문서는 <http://pi.local:8000/docs> 에서 확인할 수 있다(Swagger UI). 브라우저에서
 직접 호출해볼 수 있어 디버깅에 편하다.
@@ -121,7 +126,7 @@ venv를 쓰는 편이 안전하다.
 
 ```bash
 export API_KEY='충분히 긴 무작위 문자열'
-uvicorn server.main:app --host 0.0.0.0 --port 8000
+.venv/bin/uvicorn server.main:app --host :: --port 8000
 ```
 
 설정하면 모든 요청에 `X-API-Key` 헤더가 필요해진다. 설정하지 않으면 인증 없이
