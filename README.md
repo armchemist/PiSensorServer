@@ -12,8 +12,14 @@
 | [`arm/`](arm/) | 구동 | 로봇 팔 (OpenManipulator, ROS 2 Jazzy) |
 | [`rail/`](rail/) | 구동 | 리니어 스테이지 (스텝모터 + 볼스크류) |
 | [`sensors/`](sensors/) | 측정 | pH(SEN0161), 전도도(SEN0244), 카메라 |
+| [`server/`](server/) | 통합 | 위 하드웨어를 HTTP API로 노출 |
 
 각 디렉토리의 `README.md` 에 배선과 사용법이 있다.
+
+최종 목표는 클라우드의 멀티모달 에이전트가 화학 실험을 수행하는 것이다. 에이전트는
+USB에 직접 접근할 수 없으므로, 실험대 쪽의 라즈베리파이가 하드웨어를 물고
+[`server/`](server/) 의 HTTP API로 노출한다. 엔드포인트는 에이전트의 도구와
+1:1로 대응한다.
 
 ## 하드웨어 구성
 
@@ -62,12 +68,21 @@ WiFi는 SD카드의 `network-config` 에 여러 개를 등록해 둬서, 부팅 
 | `rail/*.py` | 라즈베리파이 | `pigpio` |
 | `sensors/read_sensors.py` | 라즈베리파이 | `pyserial` |
 | `sensors/arduino_sensors/` | 아두이노 우노 | — |
+| `server/` | 라즈베리파이 | `fastapi`, `uvicorn` |
+
+`rail/`, `sensors/` 의 스크립트는 하드웨어를 직접 다루는 최소 단위이고,
+`server/` 는 그것을 API로 감싼다. 배선을 확인할 때는 스크립트를 직접 실행하고,
+에이전트에 연결할 때는 서버를 쓴다.
 
 ## 진행 상황
 
 - [x] 라즈베리파이 설치 및 WiFi/SSH 구성
 - [x] 리니어 스테이지 제어 코드 (하드웨어 검증 전)
 - [x] 센서 읽기 코드 (아두이노 → 파이)
+- [x] 하드웨어 API 서버 (센서/카메라/레일 엔드포인트)
+- [ ] 아두이노를 파이에 연결해 실제 측정값 확인
 - [ ] pH 캘리브레이션 (pH 4.00/7.00 표준액 필요)
 - [ ] USB 카메라 연동
 - [ ] ROS 2 Jazzy 설치 및 OpenManipulator 빌드
+- [ ] 외부 노출 (Tailscale) + API 키 설정
+- [ ] 에이전트 도구 정의
