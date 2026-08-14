@@ -1,5 +1,12 @@
 """리니어 스테이지(볼스크류 + 스텝모터) mm 단위 제어.
 
+하드웨어:
+    스테이지   LSM4-NK235630x-1610  (볼스크류 φ16, 리드 10mm)
+    드라이버   MSD-224              (분주 1/8, 전류 2.8~3.0A)
+    모터       1.8도 2상, 3A/phase
+    전원       24V 5A (HT-AD036)
+
+
 펄스는 pigpio의 wave API로 만든다. set_PWM_frequency()는 요청 주파수를
 샘플레이트 기준 이산값으로 스냅시켜서, 요청값으로 계산한 시간만큼 기다리면
 실제로 나간 펄스 수가 어긋난다. 왕복할수록 오차가 누적되므로 위치 제어에는
@@ -17,15 +24,21 @@ PUL_PIN = 22
 DIR_PIN = 27
 ENA_PIN = 17          # ENA 안 쓰면 None 으로
 
-LEAD_MM     = 5       # 리드 (1605=5, 1610=10, 1620=20, 1204=4)
-MICROSTEP   = 8       # 드라이버 분주 설정
+LEAD_MM     = 10      # 모델 -1610 = 리드 10mm (1605=5, 1610=10, 1620=20, 1204=4)
+MICROSTEP   = 8       # MSD-224 DIP S1~S3 = 1/8 (1600 pulse/rev)
 STEPS_PER_REV = 200   # 1.8도 모터 = 200스텝 (고정)
 
 INVERT_DIR  = False   # 방향 반대면 True
 
 # --- 소프트 리밋 (리미트스위치 없음) ---
+# ⚠️ STROKE_MM 은 실제 유효 스트로크로 반드시 맞출 것. 이 값보다 크면 소프트
+#    리밋이 캐리지의 끝단 충돌을 막지 못한다.
 STROKE_MM         = 100.0          # 스테이지 유효 스트로크
 START_POSITION_MM = STROKE_MM / 2  # 전원 인가 시 캐리지를 중앙에 두고 시작한다고 가정
+
+# 모델별 매뉴얼 상한: 1605=50, 1610=100, 1620=200, 1204=40 (mm/s)
+# 이 값을 넘기면 탈조(스텝 씹힘)로 위치를 잃는다.
+MAX_SPEED_MM_S = 100.0
 
 MAX_PULSE_HZ = 100000   # 드라이버 한계(127kHz) 아래로 제한
 MIN_PULSE_HZ = 100
@@ -94,6 +107,12 @@ def move_mm(distance_mm, speed_mm_s=10.0):
         raise SoftLimitError(
             "현재 위치를 알 수 없음. 캐리지 위치를 눈으로 확인한 뒤 "
             "set_position_mm()으로 알려주세요."
+        )
+
+    if speed_mm_s > MAX_SPEED_MM_S:
+        raise SoftLimitError(
+            f"속도 {speed_mm_s}mm/s 는 상한 {MAX_SPEED_MM_S}mm/s 를 넘습니다. "
+            "탈조로 위치를 잃습니다."
         )
 
     steps = int(round(abs(distance_mm) * STEPS_PER_MM))
