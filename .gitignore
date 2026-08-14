@@ -1,0 +1,11 @@
+.DS_Store
+
+__pycache__/
+*.py[cod]
+
+# read_sensors.py --csv 로 남기는 측정 로그
+*.csv
+
+# 카메라 테스트 결과물
+*.jpg
+*.png
