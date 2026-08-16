@@ -6,6 +6,9 @@ __pycache__/
 .venv/
 venv/
 
+# API_KEY 등. systemd 유닛이 EnvironmentFile 로 읽는다
+.env
+
 # read_sensors.py --csv 로 남기는 측정 로그
 *.csv
 

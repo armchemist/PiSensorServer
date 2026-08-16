@@ -74,15 +74,55 @@ venv를 쓰는 편이 안전하다.
 바인드: :: (IPv4+IPv6)  포트 8000
 ```
 
-### SSH를 끊어도 계속 띄워두려면
+위 명령은 포그라운드로 돈다. SSH 창을 닫거나 Ctrl+C 를 누르면 서버도 같이
+죽으므로, 실제 운용에서는 아래 systemd 등록을 쓴다.
+
+## systemd 등록 (권장)
+
+클라우드 에이전트가 붙을 시스템이라 사람이 매번 띄워주는 구조로는 운영이 안 된다.
+등록해 두면 부팅 시 자동 시작되고, 죽으면 알아서 다시 뜬다.
 
 ```bash
-nohup .venv/bin/python -m server.run > ~/server.log 2>&1 &
+sudo cp server/lab-hardware.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now lab-hardware
 ```
 
-로그는 `tail -f ~/server.log`, 종료는 `pkill -f server.run`.
+| 명령 | 용도 |
+| --- | --- |
+| `systemctl status lab-hardware` | 상태 확인 |
+| `journalctl -u lab-hardware -f` | 로그 실시간 |
+| `sudo systemctl restart lab-hardware` | 코드 수정 후 재시작 |
+| `sudo systemctl stop lab-hardware` | 잠시 내리기 |
+| `sudo systemctl disable lab-hardware` | 자동 시작 해제 |
 
-포그라운드로 띄우면 SSH 창을 닫거나 Ctrl+C를 누를 때 서버도 같이 죽는다.
+유닛 파일은 경로가 `/home/pi/RaspberryPiRemoteController` 로 박혀 있다. 다른
+곳에 두었다면 `WorkingDirectory` 와 `ExecStart` 를 고칠 것.
+
+### 환경변수는 .env 로
+
+`API_KEY` 같은 값은 저장소 루트의 `.env` 에 넣는다. 유닛이 읽어 간다.
+
+```bash
+cat > ~/RaspberryPiRemoteController/.env <<'EOF'
+API_KEY=충분히 긴 무작위 문자열
+CAMERA_INDEX=0
+EOF
+sudo systemctl restart lab-hardware
+```
+
+`.env` 는 `.gitignore` 에 있어서 커밋되지 않는다.
+
+### ⚠️ 시리얼 포트 충돌
+
+서비스가 떠 있으면 아두이노 시리얼 포트를 서버가 잡고 있다. `read_sensors.py`
+를 직접 돌리려면 먼저 서비스를 내려야 한다.
+
+```bash
+sudo systemctl stop lab-hardware
+python3 sensors/read_sensors.py
+sudo systemctl start lab-hardware
+```
 
 문서는 <http://pi.local:8000/docs> 에서 확인할 수 있다(Swagger UI). 브라우저에서
 직접 호출해볼 수 있어 디버깅에 편하다.
