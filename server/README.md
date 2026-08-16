@@ -152,7 +152,7 @@ nohup .venv/bin/python -m server.run > ~/server.log 2>&1 &
 
 ```bash
 export API_KEY='충분히 긴 무작위 문자열'
-.venv/bin/uvicorn server.main:app --host :: --port 8000
+.venv/bin/python -m server.run
 ```
 
 설정하면 모든 요청에 `X-API-Key` 헤더가 필요해진다. 설정하지 않으면 인증 없이
