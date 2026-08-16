@@ -4,9 +4,9 @@
 하드웨어를 물고 API로 노출한다. 엔드포인트는 에이전트 도구와 1:1로 대응한다.
 
 실행:
-    uvicorn server.main:app --host :: --port 8000
+    python -m server.run
 
-`0.0.0.0` 이 아니라 `::` 인 이유는 server/README.md 참고 (IPv6 전용 네트워크 대응).
+uvicorn 을 직접 부르지 않는 이유는 server/run.py 참고 (IPv4/IPv6 동시 바인드).
 """
 
 from contextlib import asynccontextmanager

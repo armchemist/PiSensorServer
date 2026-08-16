@@ -48,15 +48,41 @@ venv를 쓰는 편이 안전하다.
 저장소 루트에서:
 
 ```bash
-.venv/bin/uvicorn server.main:app --host :: --port 8000
+.venv/bin/python -m server.run
 ```
 
-`--host` 를 주지 않으면 localhost에만 묶여서 다른 기기가 접근할 수 없다.
+포트를 바꾸려면 `PORT=9000 .venv/bin/python -m server.run`.
 
-`0.0.0.0` 이 아니라 `::` 인 이유가 있다. `0.0.0.0` 은 **IPv4에만** 귀를 기울인다.
-아이폰 핫스팟처럼 IPv6 전용 네트워크에서는 클라이언트가 IPv6로 접속하기 때문에
-연결이 거부된다. `::` 는 IPv6 전체 주소를 뜻하고, 리눅스에서는 IPv4 연결도 함께
-받으므로(듀얼 스택) 어느 네트워크에서든 동작한다.
+### uvicorn 을 직접 부르지 않는 이유
+
+`uvicorn --host` 로는 IPv4와 IPv6 중 한쪽만 열린다.
+
+| 명령 | 결과 |
+| --- | --- |
+| `--host 0.0.0.0` | IPv4만. IPv6 전용 네트워크(아이폰 핫스팟 등)에서 접속 불가 |
+| `--host ::` | IPv6만. 일반 공유기(IPv4)에서 접속 불가 |
+
+커널 기본값은 듀얼 스택이지만, 파이썬 `asyncio` 의 `create_server()` 가 IPv6
+주소로 바인드할 때 `IPV6_V6ONLY` 소켓 옵션을 명시적으로 켜기 때문이다.
+
+`server/run.py` 는 소켓을 직접 만들어 그 옵션을 끈 뒤 uvicorn 에 넘긴다.
+장소를 옮겨 네트워크가 바뀌어도 실행 명령을 바꿀 필요가 없다.
+
+기동 시 어떻게 바인드됐는지 첫 줄에 찍힌다.
+
+```
+바인드: :: (IPv4+IPv6)  포트 8000
+```
+
+### SSH를 끊어도 계속 띄워두려면
+
+```bash
+nohup .venv/bin/python -m server.run > ~/server.log 2>&1 &
+```
+
+로그는 `tail -f ~/server.log`, 종료는 `pkill -f server.run`.
+
+포그라운드로 띄우면 SSH 창을 닫거나 Ctrl+C를 누를 때 서버도 같이 죽는다.
 
 문서는 <http://pi.local:8000/docs> 에서 확인할 수 있다(Swagger UI). 브라우저에서
 직접 호출해볼 수 있어 디버깅에 편하다.
