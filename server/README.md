@@ -94,6 +94,7 @@ nohup .venv/bin/python -m server.run > ~/server.log 2>&1 &
 | `GET` | `/health` | 모든 하드웨어의 연결 상태 |
 | `GET` | `/sensors` | 마지막으로 읽은 pH / 전도도 |
 | `GET` | `/camera/capture` | 현재 프레임 (JPEG) |
+| `GET` | `/camera/stream` | MJPEG 실시간 스트림. `?fps=10` (1~30) |
 | `GET` | `/rail/position` | 캐리지 현재 위치 |
 | `POST` | `/rail/move` | 상대 이동 `{"mm": 10, "speed_mm_s": 5}` |
 | `POST` | `/rail/move_to` | 절대 위치 이동 |
@@ -112,6 +113,26 @@ nohup .venv/bin/python -m server.run > ~/server.log 2>&1 &
 
 에이전트가 실패 원인을 구분할 수 있도록 나눠 뒀다. `503` 은 하드웨어를 꽂으면
 해결되고, `400` 은 명령을 바꿔야 해결된다.
+
+## 카메라 실시간으로 보기
+
+브라우저 주소창에 그대로 열면 영상이 나온다. 플러그인이나 별도 프로그램이
+필요 없다.
+
+```
+http://192.168.22.15:8000/camera/stream
+```
+
+MJPEG(`multipart/x-mixed-replace`) 방식이라 브라우저가 알아서 프레임을 이어
+붙여 보여준다. 기본 10fps이고 `?fps=5` 처럼 조절할 수 있다. 파이 CPU가 부담되면
+낮추면 된다.
+
+단발 촬영은 `/camera/capture` 를 쓴다. 스트리밍 중에도 끼어들 수 있게 프레임마다
+락을 잡았다 놓으므로 둘을 같이 써도 된다.
+
+⚠️ `API_KEY` 를 설정하면 브라우저에서 스트림을 직접 열 수 없다. 헤더를 넣을
+방법이 없기 때문이다. 외부에 노출한 뒤에는 Tailscale 내부망에서 보거나,
+`/camera/capture` 를 스크립트로 받아 보는 편이 낫다.
 
 ## 하드웨어가 없어도 뜬다
 

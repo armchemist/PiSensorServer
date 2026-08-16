@@ -11,7 +11,8 @@ uvicorn 을 직접 부르지 않는 이유는 server/run.py 참고 (IPv4/IPv6 �
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import config
@@ -93,6 +94,39 @@ def capture():
         content=jpeg,
         media_type="image/jpeg",
         headers={"X-Frame-Shape": "x".join(str(n) for n in shape)},
+    )
+
+
+BOUNDARY = "frame"
+
+
+@app.get("/camera/stream")
+def stream(fps: int = Query(default=10, ge=1, le=30)):
+    """MJPEG 실시간 스트림. 브라우저 주소창에 그대로 열면 영상이 보인다.
+
+    카메라를 못 열면 첫 프레임에서 예외가 나지만, 스트리밍 응답은 헤더가 이미
+    나간 뒤라 상태 코드를 바꿀 수 없다. 그래서 먼저 한 장 찍어보고 실패하면
+    503으로 돌려준다.
+    """
+    try:
+        camera.capture_jpeg()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    def frames():
+        try:
+            for jpeg in camera.stream_jpeg(fps=fps):
+                yield (
+                    f"--{BOUNDARY}\r\n"
+                    f"Content-Type: image/jpeg\r\n"
+                    f"Content-Length: {len(jpeg)}\r\n\r\n"
+                ).encode() + jpeg + b"\r\n"
+        except (GeneratorExit, RuntimeError):
+            return  # 클라이언트가 창을 닫았거나 카메라가 빠졌다
+
+    return StreamingResponse(
+        frames(),
+        media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
     )
 
 
