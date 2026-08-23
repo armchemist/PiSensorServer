@@ -1,0 +1,29 @@
+[Unit]
+Description=Lab sensor HTTP API (열화상, pH/전도도, 레일)
+Documentation=https://github.com/armchemist/PiSensorServer
+# 네트워크가 올라온 뒤에 시작한다. 센서/열화상은 USB라 없어도 서버는 뜨지만,
+# 바인드할 주소가 없으면 곤란하다.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/PiSensorServer
+ExecStart=/home/pi/PiSensorServer/.venv/bin/python -m server.run
+
+# API_KEY 같은 값은 이 파일에 KEY=VALUE 로 넣는다. 앞의 '-' 는 파일이 없어도
+# 무시하고 진행하라는 뜻. 저장소에 커밋되지 않도록 .gitignore 에 넣어 두었다.
+EnvironmentFile=-/home/pi/PiSensorServer/.env
+
+# 죽으면 다시 띄운다. USB를 뽑았다 꽂거나 열화상이 빠져도 서버는 유지되지만,
+# 예상 못 한 이유로 죽는 경우에 대비한다.
+Restart=always
+RestartSec=3
+
+# 로그는 journald 로. journalctl -u pi-sensor-server -f 로 실시간 확인.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,4 @@
-# 하드웨어 API 서버
+# 하드웨어 API 서버 (파이2 — 고정된 쪽)
 
 클라우드에서 도는 에이전트는 USB에 손을 뻗을 수 없다. 실험대 쪽 컴퓨터
 (라즈베리파이)가 하드웨어를 물고 HTTP로 노출하고, 에이전트는 그 API를 호출한다.
@@ -7,12 +7,16 @@
 클라우드 (LLM 에이전트)
      │  HTTP
 ┌────┴─────────┐
-│ 라즈베리파이   │  ← 이 서버
+│ 파이2 (정적)  │  ← 이 서버
 └─┬───┬───┬────┘
-  │   │   └── USB → 아두이노 → pH / 전도도
-  │   └────── USB → 카메라
-  └────────── GPIO → 레일,  ROS 2 → 로봇 팔
+  │   │   └── USB  → 아두이노 → pH / 전도도
+  │   └────── USB  → 열화상 (TMC160F)
+  └────────── GPIO → 레일 (스텝모터 드라이버)
 ```
+
+로봇 팔과 핸디캠은 레일 위에서 같이 움직이는 파이1이 맡는다 —
+[PiRobotControl](https://github.com/armchemist/PiRobotControl). 두 파이는 서로를
+모르고, 에이전트가 양쪽 주소를 각각 호출한다.
 
 엔드포인트는 에이전트의 도구(tool)와 1:1로 대응하도록 설계했다. SSH로 셸 명령을
 보내는 방식과 달리 출력 파싱이 안정적이고, 상태를 조회할 수 있으며, 한계를
@@ -27,17 +31,20 @@ sudo apt update
 sudo apt install -y python3-venv python3-serial python3-opencv
 ```
 
-`python3-serial`(센서)과 `python3-opencv`(카메라)를 apt로 받는 이유는, ARM에서
-pip로 설치하면 빌드에 아주 오래 걸리거나 실패하기 때문이다.
+`python3-serial`(우노)과 `python3-opencv`(열화상 렌더링)를 apt로 받는 이유는,
+ARM에서 pip로 설치하면 빌드에 아주 오래 걸리거나 실패하기 때문이다.
+
+opencv 는 열화상 **캡처**에는 쓰지 않는다. 프레임은 V4L2 로 직접 읽고, opencv 는
+컬러맵을 입혀 JPEG 로 만드는 표시 단계에만 쓴다. 이유는 아래 열화상 절 참고.
 
 ```bash
-cd ~/RaspberryPiRemoteController
+cd ~/PiSensorServer
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install fastapi "uvicorn[standard]"
 ```
 
 `--system-site-packages` 가 있어야 venv 안에서 apt로 설치한 `cv2` 와 `serial` 을
-볼 수 있다. 빼먹으면 카메라와 센서가 동작하지 않는다.
+볼 수 있다. 빼먹으면 열화상 렌더링과 센서가 동작하지 않는다.
 
 Ubuntu 24.04는 시스템 파이썬에 pip 설치를 막아 두었다(PEP 668).
 `--break-system-packages` 로 우회할 수도 있지만, 시스템 패키지와 충돌할 수 있어
@@ -83,20 +90,20 @@ venv를 쓰는 편이 안전하다.
 등록해 두면 부팅 시 자동 시작되고, 죽으면 알아서 다시 뜬다.
 
 ```bash
-sudo cp server/lab-hardware.service /etc/systemd/system/
+sudo cp server/pi-sensor-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now lab-hardware
+sudo systemctl enable --now pi-sensor-server
 ```
 
 | 명령 | 용도 |
 | --- | --- |
-| `systemctl status lab-hardware` | 상태 확인 |
-| `journalctl -u lab-hardware -f` | 로그 실시간 |
-| `sudo systemctl restart lab-hardware` | 코드 수정 후 재시작 |
-| `sudo systemctl stop lab-hardware` | 잠시 내리기 |
-| `sudo systemctl disable lab-hardware` | 자동 시작 해제 |
+| `systemctl status pi-sensor-server` | 상태 확인 |
+| `journalctl -u pi-sensor-server -f` | 로그 실시간 |
+| `sudo systemctl restart pi-sensor-server` | 코드 수정 후 재시작 |
+| `sudo systemctl stop pi-sensor-server` | 잠시 내리기 |
+| `sudo systemctl disable pi-sensor-server` | 자동 시작 해제 |
 
-유닛 파일은 경로가 `/home/pi/RaspberryPiRemoteController` 로 박혀 있다. 다른
+유닛 파일은 경로가 `/home/pi/PiSensorServer` 로 박혀 있다. 다른
 곳에 두었다면 `WorkingDirectory` 와 `ExecStart` 를 고칠 것.
 
 ### 환경변수는 .env 로
@@ -104,11 +111,10 @@ sudo systemctl enable --now lab-hardware
 `API_KEY` 같은 값은 저장소 루트의 `.env` 에 넣는다. 유닛이 읽어 간다.
 
 ```bash
-cat > ~/RaspberryPiRemoteController/.env <<'EOF'
+cat > ~/PiSensorServer/.env <<'EOF'
 API_KEY=충분히 긴 무작위 문자열
-CAMERA_INDEX=0
 EOF
-sudo systemctl restart lab-hardware
+sudo systemctl restart pi-sensor-server
 ```
 
 `.env` 는 `.gitignore` 에 있어서 커밋되지 않는다.
@@ -119,9 +125,9 @@ sudo systemctl restart lab-hardware
 를 직접 돌리려면 먼저 서비스를 내려야 한다.
 
 ```bash
-sudo systemctl stop lab-hardware
+sudo systemctl stop pi-sensor-server
 python3 sensors/read_sensors.py
-sudo systemctl start lab-hardware
+sudo systemctl start pi-sensor-server
 ```
 
 문서는 <http://pi.local:8000/docs> 에서 확인할 수 있다(Swagger UI). 브라우저에서
@@ -133,8 +139,6 @@ sudo systemctl start lab-hardware
 | --- | --- | --- |
 | `GET` | `/health` | 모든 하드웨어의 연결 상태 |
 | `GET` | `/sensors` | 마지막으로 읽은 pH / 전도도 |
-| `GET` | `/camera/capture` | 현재 프레임 (JPEG) |
-| `GET` | `/camera/stream` | MJPEG 실시간 스트림. `?fps=10` (1~30) |
 | `GET` | `/thermal/ui` | **bbox 지정 웹 UI.** 브라우저로 열면 된다 |
 | `GET` | `/thermal/stream` | 열화상 MJPEG 스트림 (ROI 사각형 포함) |
 | `GET` | `/thermal/frame` | 열화상 한 장 (JPEG) |
@@ -151,7 +155,6 @@ sudo systemctl start lab-hardware
 | `POST` | `/rail/move` | 상대 이동 `{"mm": 10, "speed_mm_s": 5}` |
 | `POST` | `/rail/move_to` | 절대 위치 이동 |
 | `POST` | `/rail/set_position` | 위치를 잃었을 때 실제 위치를 알려줌 |
-| `POST` | `/arm/pose` | 미구현 (ROS 2 설치 필요) |
 
 ### 상태 코드
 
@@ -160,27 +163,12 @@ sudo systemctl start lab-hardware
 | `400` | 소프트 리밋 위반 등 요청 자체가 잘못됨 |
 | `409` | 레일이 이미 이동 중 |
 | `422` | 입력값 검증 실패 (속도가 음수 등) |
-| `501` | 아직 구현되지 않은 기능 |
 | `503` | 하드웨어가 연결되지 않았거나 초기화 실패 |
 
 에이전트가 실패 원인을 구분할 수 있도록 나눠 뒀다. `503` 은 하드웨어를 꽂으면
 해결되고, `400` 은 명령을 바꿔야 해결된다.
 
-## 카메라 실시간으로 보기
-
-브라우저 주소창에 그대로 열면 영상이 나온다. 플러그인이나 별도 프로그램이
-필요 없다.
-
-```
-http://192.168.22.15:8000/camera/stream
-```
-
-MJPEG(`multipart/x-mixed-replace`) 방식이라 브라우저가 알아서 프레임을 이어
-붙여 보여준다. 기본 10fps이고 `?fps=5` 처럼 조절할 수 있다. 파이 CPU가 부담되면
-낮추면 된다.
-
-단발 촬영은 `/camera/capture` 를 쓴다. 스트리밍 중에도 끼어들 수 있게 프레임마다
-락을 잡았다 놓으므로 둘을 같이 써도 된다.
+## 브라우저에서 볼 때 (API 키를 걸었다면)
 
 ⚠️ `API_KEY` 를 설정했다면 브라우저에서는 `?api_key=...` 를 붙여야 한다.
 `<img>` 태그에는 헤더를 넣을 방법이 없어서 쿼리스트링도 받도록 해 두었다.
@@ -238,9 +226,9 @@ CDC-ACM 쪽(`/dev/ttyACM*`)은 제어용 채널로 보이는데, 아무것도 �
 들어오면 여기부터 확인할 것.
 
 ```bash
-sudo systemctl stop lab-hardware     # 테스트 전에 내리고
+sudo systemctl stop pi-sensor-server     # 테스트 전에 내리고
 # ... 스크립트 실행 ...
-sudo systemctl start lab-hardware    # 끝나면 올린다
+sudo systemctl start pi-sensor-server    # 끝나면 올린다
 ```
 
 무엇이 물고 있는지는 이렇게 찾는다.
@@ -320,7 +308,7 @@ curl 'http://pi.local:8000/thermal/roi/<id>?limit=60'
 
 ## 하드웨어가 없어도 뜬다
 
-센서, 카메라, 레일 중 무엇이 빠져 있어도 서버는 정상적으로 시작한다. 없는 것은
+센서, 열화상, 레일 중 무엇이 빠져 있어도 서버는 정상적으로 시작한다. 없는 것은
 `/health` 에 이유와 함께 보고되고, 해당 엔드포인트만 `503` 을 돌려준다.
 
 하나씩 붙여가며 확인할 수 있도록 한 것이다. USB를 나중에 꽂아도 센서 리더가
@@ -361,7 +349,7 @@ export API_KEY='충분히 긴 무작위 문자열'
 ```
 
 설정하면 모든 요청에 `X-API-Key` 헤더가 필요해진다. 설정하지 않으면 인증 없이
-누구나 로봇 팔과 레일을 움직일 수 있다. **로컬 테스트 중에만 생략할 것.**
+누구나 레일을 움직일 수 있다. **로컬 테스트 중에만 생략할 것.**
 
 ## 안전
 
@@ -388,16 +376,14 @@ export API_KEY='충분히 긴 무작위 문자열'
 | `SERIAL_PORT` | 자동 탐색 | 아두이노 포트 |
 | `SERIAL_BAUD` | `9600` | 스케치와 일치해야 함 |
 | `SENSOR_STALE_AFTER_S` | `5.0` | 이보다 오래되면 `stale` |
-| `CAMERA_INDEX` | `0` | `/dev/video0` |
-| `CAMERA_WIDTH` / `CAMERA_HEIGHT` | `1280` / `720` | |
 | `THERMAL_DEVICE` | `/dev/video0` | 열화상 카메라 노드 |
 | `THERMAL_SAMPLE_INTERVAL_S` | `1.0` | ROI 시계열 샘플 간격(초) |
 | `THERMAL_SERIES_MAX` | `86400` | ROI 하나당 최대 샘플 수 |
 | `API_KEY` | (없음) | 설정 시 인증 필수 |
 
-⚠️ 일반 USB 카메라와 열화상을 **같이 꽂으면 둘 다 `/dev/video*` 를 쓰므로 번호가
-밀린다.** 그때는 `CAMERA_INDEX` 와 `THERMAL_DEVICE` 를 명시해야 한다. 어느 쪽이
-어느 번호인지는 이렇게 확인한다.
+⚠️ 이 파이에는 다른 카메라가 없어서 `/dev/video0` 이 보통 그대로 맞는다. 다만
+V4L2 장치를 하나라도 더 꽂으면 번호가 밀리므로 그때는 `THERMAL_DEVICE` 를 명시해야
+한다. 어느 쪽이 어느 번호인지는 이렇게 확인한다.
 
 ```bash
 for d in /dev/video*; do echo "$d: $(cat /sys/class/video4linux/$(basename $d)/name)"; done

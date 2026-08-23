@@ -1,7 +1,16 @@
-"""실험 장비 HTTP API.
+"""실험 장비 HTTP API (파이2 — 고정된 쪽).
 
 클라우드의 에이전트는 USB에 손을 뻗을 수 없으므로, 실험대 쪽 컴퓨터(라즈베리파이)가
 하드웨어를 물고 API로 노출한다. 엔드포인트는 에이전트 도구와 1:1로 대응한다.
+
+이 파이가 맡는 것은 **고정된 것들**이다.
+
+    열화상 (USB)  +  우노(pH/전도도, USB)  +  레일 구동 (GPIO)
+
+로봇 팔과 핸디캠은 레일 위에서 같이 움직이는 파이1이 맡는다. 그쪽은 별도
+저장소(PiRobotControl)다. 레일을 **구동**하는 쪽이 여기인 게 헷갈리기 쉬운데,
+스텝모터 드라이버에 GPIO로 직결돼야 하기 때문이다. 레일 위에 타는 것은 파이1,
+레일을 미는 것은 파이2다.
 
 실행:
     python -m server.run
@@ -21,7 +30,6 @@ from pydantic import BaseModel, Field
 
 from . import config
 from .hardware import thermal_render
-from .hardware.camera import camera
 from .hardware.rail import RailBusy, rail
 from .hardware.sensors import reader as sensor_reader
 from .hardware.thermal import thermal
@@ -39,7 +47,6 @@ async def lifespan(app: FastAPI):
     yield
     sensor_reader.stop()
     thermal.close()
-    camera.close()
     rail.close()
 
 
@@ -73,10 +80,8 @@ def health():
     """각 하드웨어의 연결 상태. 어떤 것이 빠져 있어도 200을 돌려준다."""
     return {
         "sensors": sensor_reader.status(),
-        "camera": camera.status(),
         "thermal": thermal.status(),
         "rail": rail.status(),
-        "arm": {"available": False, "error": "ROS 2 미설치"},
     }
 
 
@@ -96,60 +101,6 @@ def get_sensors():
     return data
 
 
-# --- 카메라 ----------------------------------------------------------------
-
-
-@app.get(
-    "/camera/capture",
-    responses={200: {"content": {"image/jpeg": {}}}},
-    response_class=Response,
-)
-def capture():
-    """현재 프레임을 JPEG로 반환한다."""
-    try:
-        jpeg, shape = camera.capture_jpeg()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return Response(
-        content=jpeg,
-        media_type="image/jpeg",
-        headers={"X-Frame-Shape": "x".join(str(n) for n in shape)},
-    )
-
-
-BOUNDARY = "frame"
-
-
-@app.get("/camera/stream")
-def stream(fps: int = Query(default=10, ge=1, le=30)):
-    """MJPEG 실시간 스트림. 브라우저 주소창에 그대로 열면 영상이 보인다.
-
-    카메라를 못 열면 첫 프레임에서 예외가 나지만, 스트리밍 응답은 헤더가 이미
-    나간 뒤라 상태 코드를 바꿀 수 없다. 그래서 먼저 한 장 찍어보고 실패하면
-    503으로 돌려준다.
-    """
-    try:
-        camera.capture_jpeg()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    def frames():
-        try:
-            for jpeg in camera.stream_jpeg(fps=fps):
-                yield (
-                    f"--{BOUNDARY}\r\n"
-                    f"Content-Type: image/jpeg\r\n"
-                    f"Content-Length: {len(jpeg)}\r\n\r\n"
-                ).encode() + jpeg + b"\r\n"
-        except (GeneratorExit, RuntimeError):
-            return  # 클라이언트가 창을 닫았거나 카메라가 빠졌다
-
-    return StreamingResponse(
-        frames(),
-        media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
-    )
-
-
 # --- 열화상 카메라 ----------------------------------------------------------
 #
 # 값은 전부 섭씨(℃)로 나간다. 센서 원시값은 센티켈빈이지만 그건 thermal.py 안에
@@ -163,6 +114,9 @@ class RoiRequest(BaseModel):
     w: int = Field(gt=0, le=160, description="폭(픽셀)")
     h: int = Field(gt=0, le=120, description="높이(픽셀)")
     name: Optional[str] = Field(default=None, description="표시용 이름")
+
+
+BOUNDARY = "frame"
 
 
 def _render_opts(width, colormap, tmin, tmax, smooth):
@@ -399,14 +353,3 @@ def rail_set_position(req: SetPositionRequest):
     """이동이 중단돼 위치를 잃었을 때 실제 위치를 다시 알려준다."""
     pos = _rail_call(rail.set_position, req.mm)
     return {"position_mm": pos}
-
-
-# --- 로봇 팔 ---------------------------------------------------------------
-
-
-@app.post("/arm/pose")
-def arm_pose():
-    raise HTTPException(
-        status_code=501,
-        detail="미구현. 라즈베리파이에 ROS 2 Jazzy 설치가 먼저 필요합니다",
-    )
