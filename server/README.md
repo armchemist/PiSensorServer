@@ -226,6 +226,29 @@ CDC-ACM 쪽(`/dev/ttyACM*`)은 제어용 채널로 보이는데, 아무것도 �
 이걸 모르면 "프레임은 오는데 값이 안 변한다"로 한참 헤맨다. `thermal.py` 는
 켈빈 범위(20000~45000)를 벗어난 프레임을 버리는 것으로 걸러낸다.
 
+### ⚠️ 장치는 한 번에 한 프로세스만
+
+`/dev/video0` 은 스트리밍 중이면 다른 프로세스가 열 수 없다. 두 번째는
+`OSError: [Errno 16] Device or resource busy` 로 막힌다. 시리얼 포트와 같은
+상황이다.
+
+서비스가 떠 있는 상태에서 테스트 스크립트를 돌리면 스크립트가 실패하고,
+반대로 테스트 스크립트가 물고 있으면 **서비스 쪽 열화상만 조용히 죽는다**
+(서버는 정상으로 뜨고 `/health` 의 `thermal.error` 에만 나타난다). 값이 안
+들어오면 여기부터 확인할 것.
+
+```bash
+sudo systemctl stop lab-hardware     # 테스트 전에 내리고
+# ... 스크립트 실행 ...
+sudo systemctl start lab-hardware    # 끝나면 올린다
+```
+
+무엇이 물고 있는지는 이렇게 찾는다.
+
+```bash
+sudo fuser -v /dev/video0
+```
+
 ### ⚠️ 맥에서는 안 된다
 
 맥에 꽂으면 macOS UVC 드라이버가 장치를 물기는 하는데 **Y16 을 AVFoundation 에
