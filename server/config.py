@@ -34,6 +34,17 @@ CAMERA_INDEX = _int("CAMERA_INDEX", 0)
 CAMERA_WIDTH = _int("CAMERA_WIDTH", 1280)
 CAMERA_HEIGHT = _int("CAMERA_HEIGHT", 720)
 
+# --- 열화상 카메라 (ThermoEye TMC160F) ---
+# Y16 160x120 9fps 고정. 리눅스에서는 uvcvideo 가 잡아 /dev/video0 으로 뜬다.
+# 일반 USB 카메라를 같이 꽂으면 번호가 밀리므로 그때는 명시해 준다.
+THERMAL_DEVICE = os.environ.get("THERMAL_DEVICE") or "/dev/video0"
+
+# ROI 시계열 샘플 간격(초). 센서는 9fps 지만 그대로 다 쌓으면 금방 넘친다.
+THERMAL_SAMPLE_INTERVAL_S = _float("THERMAL_SAMPLE_INTERVAL_S", 1.0)
+
+# ROI 하나가 들고 있을 최대 샘플 수. 기본값은 1초 간격으로 24시간치.
+THERMAL_SERIES_MAX = _int("THERMAL_SERIES_MAX", 86400)
+
 # --- 인증 ---
 # 설정하면 모든 요청에 X-API-Key 헤더가 필요하다.
 # 외부(Tailscale/터널)로 노출하기 전에 반드시 설정할 것.

@@ -2,6 +2,9 @@ fastapi
 uvicorn[standard]
 pyserial
 
+# 열화상 카메라(thermal.py)의 프레임 연산에 필요하다.
+numpy
+
 # 카메라는 opencv가 필요하다. 라즈베리파이에서는 pip보다 apt가 훨씬 빠르다:
 #   sudo apt install -y python3-opencv
 # opencv-python-headless
