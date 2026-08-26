@@ -1,6 +1,6 @@
 """리니어 스테이지 제어를 rail/stage.py 에 위임한다.
 
-stage.py 는 임포트 시점에 pigpiod 에 연결하고, 실패하면 예외를 던진다.
+stage.py 는 임포트 시점에 /dev/gpiochip 을 열고, 실패하면 예외를 던진다.
 서버는 스테이지가 없어도 떠야 하므로 임포트를 실제 사용 시점까지 미룬다.
 
 이동은 초 단위로 걸리는 블로킹 작업이라 동시에 두 개가 실행되면 안 된다.
@@ -40,7 +40,8 @@ class Rail:
             self._error = f"{type(exc).__name__}: {exc}"
             raise RuntimeError(
                 f"스테이지를 초기화할 수 없음: {self._error}. "
-                "pigpiod가 실행 중인지 확인하세요 (sudo systemctl start pigpiod)"
+                "python3-lgpio 가 설치돼 있는지, 사용자가 dialout 그룹인지 "
+                "확인하세요 (sudo apt install -y python3-lgpio)"
             ) from exc
         return self._stage
 

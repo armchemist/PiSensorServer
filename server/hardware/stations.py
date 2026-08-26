@@ -39,7 +39,7 @@ class StationStale(RuntimeError):
 class Stations:
     def __init__(self, path=STATIONS_PATH):
         self.path = path
-        self._data = {"calibrated_at": None, "stations": {}}
+        self._data = {"calibration_id": None, "stations": {}}
         self._load()
 
     # --- 저장 ---
@@ -62,16 +62,20 @@ class Stations:
 
     # --- 조회 ---
 
-    def _stale(self, calibrated_at):
-        """저장된 기준과 지금 보정 기준이 다르면 좌표를 믿을 수 없다."""
-        stored = self._data.get("calibrated_at")
+    def _stale(self, calibration_id):
+        """저장된 기준과 지금 보정 기준이 다르면 좌표를 믿을 수 없다.
+
+        시각이 아니라 보정마다 새로 발급되는 id 로 비교한다. 초 단위 시각으로는
+        같은 초에 두 번 보정한 경우를 구분하지 못한다.
+        """
+        stored = self._data.get("calibration_id")
         if stored is None:
             # 보정 전에 등록한 경우. 보정이 생기면 기준이 달라진 것으로 본다.
-            return calibrated_at is not None
-        return stored != calibrated_at
+            return calibration_id is not None
+        return stored != calibration_id
 
-    def list(self, stroke_mm, calibrated_at):
-        stale = self._stale(calibrated_at)
+    def list(self, stroke_mm, calibration_id):
+        stale = self._stale(calibration_id)
         out = []
         for name, conf in sorted(
             self._data["stations"].items(), key=lambda kv: kv[1]["position_mm"]
@@ -86,18 +90,18 @@ class Stations:
         return {
             "stations": out,
             "stale": stale,
-            "calibrated_at": self._data.get("calibrated_at"),
-            "current_calibrated_at": calibrated_at,
+            "calibration_id": self._data.get("calibration_id"),
+            "current_calibration_id": calibration_id,
         }
 
-    def target_mm(self, name, stroke_mm, calibrated_at):
+    def target_mm(self, name, stroke_mm, calibration_id):
         """goto 대상 좌표. 신뢰할 수 없으면 예외."""
         conf = self._data["stations"].get(name)
         if conf is None:
             known = ", ".join(sorted(self._data["stations"])) or "(없음)"
             raise StationNotFound(f"'{name}' 은 등록되지 않았습니다. 등록된 것: {known}")
 
-        if self._stale(calibrated_at):
+        if self._stale(calibration_id):
             raise StationStale(
                 "재보정 이후 스테이션 좌표를 신뢰할 수 없습니다. 다시 등록하거나, "
                 "그대로 써도 된다면 /rail/stations/revalidate 를 부르세요."
@@ -112,7 +116,7 @@ class Stations:
 
     # --- 수정 ---
 
-    def add(self, name, position_mm, stroke_mm, calibrated_at, overwrite=False):
+    def add(self, name, position_mm, stroke_mm, calibration_id, overwrite=False):
         if not NAME_RE.match(name or ""):
             raise StationError("이름은 1~40자, 공백과 '/' 는 쓸 수 없습니다.")
         if name in self._data["stations"] and not overwrite:
@@ -124,12 +128,12 @@ class Stations:
 
         # 등록하는 순간의 보정 기준을 표 전체에 박는다. 표 안에서 기준이 섞이면
         # 어느 것이 유효한지 알 수 없게 되므로 표 단위로 관리한다.
-        if self._stale(calibrated_at) and self._data["stations"]:
+        if self._stale(calibration_id) and self._data["stations"]:
             raise StationStale(
                 "다른 보정 기준의 스테이션이 남아 있습니다. 전부 다시 등록하거나 "
                 "/rail/stations/revalidate 로 지금 보정 기준을 인정하세요."
             )
-        self._data["calibrated_at"] = calibrated_at
+        self._data["calibration_id"] = calibration_id
         self._data["stations"][name] = {
             "position_mm": round(float(position_mm), 3),
             "taught_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
@@ -137,7 +141,7 @@ class Stations:
         self._save()
         return {"name": name, **self._data["stations"][name]}
 
-    def update(self, name, stroke_mm, calibrated_at, position_mm=None, new_name=None):
+    def update(self, name, stroke_mm, calibration_id, position_mm=None, new_name=None):
         conf = self._data["stations"].get(name)
         if conf is None:
             raise StationNotFound(f"'{name}' 은 등록되지 않았습니다.")
@@ -150,7 +154,7 @@ class Stations:
             conf["taught_at"] = datetime.now(timezone.utc).astimezone().isoformat(
                 timespec="seconds"
             )
-            self._data["calibrated_at"] = calibrated_at
+            self._data["calibration_id"] = calibration_id
         if new_name and new_name != name:
             if not NAME_RE.match(new_name):
                 raise StationError("이름은 1~40자, 공백과 '/' 는 쓸 수 없습니다.")
@@ -168,11 +172,11 @@ class Stations:
         self._save()
         return {"removed": name}
 
-    def revalidate(self, calibrated_at):
+    def revalidate(self, calibration_id):
         """재보정 후에도 좌표가 그대로 유효하다고 사용자가 확인해 준다."""
-        self._data["calibrated_at"] = calibrated_at
+        self._data["calibration_id"] = calibration_id
         self._save()
-        return {"calibrated_at": calibrated_at, "count": len(self._data["stations"])}
+        return {"calibration_id": calibration_id, "count": len(self._data["stations"])}
 
 
 stations = Stations()

@@ -115,12 +115,23 @@ MSD-224 아래쪽 `VCC` / `GND` 단자에 연결한다.
 
 ```bash
 sudo apt update
-sudo apt install -y pigpio python3-pigpio
-sudo systemctl enable --now pigpiod
+sudo apt install -y python3-lgpio
 ```
 
-파이썬으로 GPIO를 직접 토글하면 리눅스 스케줄링 때문에 펄스 간격이 흔들려
-모터가 덜덜거린다. `pigpio` 는 DMA로 파형을 만들어 타이밍이 안정적이다.
+데몬도 루트 권한도 필요 없다. `/dev/gpiochip0` 의 그룹이 `dialout` 이고
+기본 사용자가 거기 속해 있어서 그대로 쓸 수 있다.
+
+### pigpio 가 아닌 이유
+
+`pigpio` 는 이런 용도의 표준이지만 **Ubuntu 24.04 arm64 에는 데몬이 없다.**
+클라이언트 패키지(`python3-pigpio`, `pigpio-tools`)만 저장소에 있고, 정작 핀을
+흔드는 `pigpiod` 가 빠져 있다. 칩 레지스터를 직접 다루는 코드라 32비트
+라즈베리파이용으로만 빌드되기 때문이다. Raspberry Pi OS 에는 있다.
+
+`lgpio` 는 커널의 GPIO 캐릭터 장치를 거치므로 칩 종류를 타지 않고 Pi 5 에서도
+동작한다. 대신 타이밍이 커널 스케줄링에 의존해서 고속에서 펄스 간격이 흔들린다.
+그래서 `MAX_SPEED_MM_S` 를 20mm/s(3.2kHz)로 낮춰 두었다. 더 빨라야 하면
+`pigpio` 를 소스에서 빌드해 `_send_pulses()` 만 갈아끼우면 된다.
 
 ## 첫 테스트
 
@@ -217,9 +228,14 @@ end_calibration()            # 지금 자리를 반대쪽 끝으로 확정 → �
   "steps_per_mm": 160.0,
   "position_mm": 143.2,
   "calibrated_at": "2026-08-23T16:40:00+09:00",
+  "calibration_id": "3f9c1a7e5b2d4e08a1c6f0b93d7e2415",
   "saved_at": "2026-08-23T18:12:04+09:00"
 }
 ```
+
+`calibration_id` 는 보정할 때마다 새로 발급된다. 스테이션 좌표가 어느 보정
+기준인지 대조하는 데 쓴다. 시각만으로는 같은 초에 두 번 보정한 경우를 구분하지
+못해서 낡은 좌표를 놓친다.
 
 `steps_per_mm` 을 같이 적는 이유는, `LEAD_MM` 이나 `MICROSTEP` 을 바꾸면 저장된
 mm 값이 더 이상 같은 뜻이 아니기 때문이다. 불일치하면 보정값을 무시하고 경고를
@@ -246,7 +262,8 @@ set_position_mm(120)   # 건드렸다 — 실제 위치를 새로 알려준다
 
 ## 구현 메모
 
-펄스는 `pigpio` 의 wave API로 만든다. `set_PWM_frequency()` 는 요청 주파수를
+펄스는 `lgpio` 의 `tx_pulse()` 로 만든다. `pulse_cycles` 로 보낼 펄스 수를 직접
+지정하므로 실제로 나간 스텝 수가 보장된다. 주파수만 지정하는 방식은 요청 주파수를
 샘플레이트 기준 이산값으로 스냅시키기 때문에, 요청값으로 계산한 시간만큼
 기다리면 실제로 나간 펄스 수가 어긋나고 왕복할수록 오차가 누적된다. wave는
 보낼 펄스 수를 직접 지정하므로 스텝 수가 보장된다.

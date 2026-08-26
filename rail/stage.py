@@ -7,10 +7,19 @@
     전원       24V 5A (HT-AD036)
 
 
-펄스는 pigpio의 wave API로 만든다. set_PWM_frequency()는 요청 주파수를
-샘플레이트 기준 이산값으로 스냅시켜서, 요청값으로 계산한 시간만큼 기다리면
-실제로 나간 펄스 수가 어긋난다. 왕복할수록 오차가 누적되므로 위치 제어에는
-쓰지 않는다. wave는 보낼 펄스 수를 직접 지정하므로 스텝 수가 보장된다.
+펄스는 lgpio 의 tx_pulse() 로 만든다. pulse_cycles 로 **보낼 펄스 수를 직접
+지정**하므로 실제로 나간 스텝 수가 보장된다. 주파수만 지정하고 시간을 재는
+방식은 요청 주파수가 이산값으로 스냅되면서 펄스 수가 어긋나고, 왕복할수록
+오차가 누적되어 위치 제어에 쓸 수 없다.
+
+pigpio 를 쓰지 않는 이유: pigpiod 데몬이 Ubuntu 24.04 arm64 저장소에 없다.
+클라이언트 패키지(python3-pigpio)만 있고 정작 핀을 흔드는 데몬이 빠져 있다.
+칩 레지스터를 직접 다루는 코드라 32비트 라즈베리파이용으로만 빌드되기 때문이다.
+lgpio 는 커널의 GPIO 캐릭터 장치를 거치므로 칩 종류를 타지 않고, 루트 데몬도
+필요 없다(사용자가 dialout 그룹이면 된다).
+
+대신 타이밍이 커널 스케줄링에 의존한다. DMA로 파형을 찍는 pigpio 만큼 고속에서
+안정적이지 않아 MAX_SPEED_MM_S 를 실용 범위로 낮춰 두었다.
 
 리미트스위치가 없으므로 끝단은 소프트웨어로만 막는다. 위치를 신뢰할 수 없게
 되면(이동 중 중단 등) 이동을 거부하고 set_position_mm() 재선언을 요구한다.
@@ -19,10 +28,11 @@
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pigpio
+import lgpio
 
 # ===== 설정값 (본인 환경에 맞게 수정) =====
 PUL_PIN = 22
@@ -42,11 +52,21 @@ STROKE_MM         = 100.0          # 스테이지 유효 스트로크
 START_POSITION_MM = STROKE_MM / 2  # 전원 인가 시 캐리지를 중앙에 두고 시작한다고 가정
 
 # 모델별 매뉴얼 상한: 1605=50, 1610=100, 1620=200, 1204=40 (mm/s)
-# 이 값을 넘기면 탈조(스텝 씹힘)로 위치를 잃는다.
-MAX_SPEED_MM_S = 100.0
+# -1610 은 100mm/s 지만, lgpio 는 소프트웨어 타이밍이라 고속에서 펄스 간격이
+# 흔들린다. 100mm/s = 16kHz 는 위험하므로 실용 범위로 낮춰 잡았다.
+# 20mm/s = 3.2kHz. 더 빨라야 하면 pigpio 를 소스 빌드해 _send_pulses() 만
+# 갈아끼우면 된다.
+MAX_SPEED_MM_S = 20.0
 
-MAX_PULSE_HZ = 100000   # 드라이버 한계(127kHz) 아래로 제한
+MAX_PULSE_HZ = 20000    # lgpio 소프트웨어 타이밍이 버티는 범위
 MIN_PULSE_HZ = 100
+
+# /dev/gpiochip0 = pinctrl-bcm2711 (Pi 4 의 메인 GPIO 뱅크).
+# Pi 5 로 옮기면 번호가 달라진다(gpiochip4). gpioinfo 로 확인할 것.
+GPIO_CHIP = 0
+
+# tx_pulse 한 번에 넣을 최대 펄스 수. 나눠 보내도 개수는 정확하다.
+MAX_PULSE_CYCLES = 100000
 
 # --- 보정 ---
 # 실측한 스트로크와 마지막 위치를 여기 저장한다. 서버를 껐다 켜도 남는다.
@@ -79,16 +99,26 @@ class SoftLimitError(RuntimeError):
     """소프트 리밋을 벗어나거나, 현재 위치를 신뢰할 수 없는 상태."""
 
 
-pi = pigpio.pi()
-if not pi.connected:
-    raise RuntimeError("pigpiod 안 켜져 있음. sudo systemctl start pigpiod")
+def _check(rc, what):
+    """lgpio 는 예외 대신 음수 오류 코드를 돌려준다. 조용히 지나가면 안 된다."""
+    if isinstance(rc, int) and rc < 0:
+        raise RuntimeError(f"{what} 실패: {lgpio.error_text(rc)}")
+    return rc
 
-pi.set_mode(PUL_PIN, pigpio.OUTPUT)
-pi.set_mode(DIR_PIN, pigpio.OUTPUT)
-pi.write(PUL_PIN, 0)
+
+try:
+    _chip = lgpio.gpiochip_open(GPIO_CHIP)
+except Exception as exc:
+    raise RuntimeError(
+        f"/dev/gpiochip{GPIO_CHIP} 를 열 수 없음: {exc}. "
+        "python3-lgpio 가 설치돼 있는지, 사용자가 dialout 그룹인지 확인하세요."
+    ) from exc
+
+_check(lgpio.gpio_claim_output(_chip, PUL_PIN, 0), f"GPIO{PUL_PIN}(PUL) 확보")
+_check(lgpio.gpio_claim_output(_chip, DIR_PIN, 0), f"GPIO{DIR_PIN}(DIR) 확보")
 if ENA_PIN is not None:
-    pi.set_mode(ENA_PIN, pigpio.OUTPUT)
-    pi.write(ENA_PIN, 0)      # 0 = 모터 활성 유지
+    # 0 = 모터 활성 유지
+    _check(lgpio.gpio_claim_output(_chip, ENA_PIN, 0), f"GPIO{ENA_PIN}(ENA) 확보")
 
 
 def _save_calibration():
@@ -100,6 +130,9 @@ def _save_calibration():
         "steps_per_mm": round(STEPS_PER_MM, 6),
         "position_mm": round(_position_mm, 4),
         "calibrated_at": _calibration.get("calibrated_at") if _calibration else None,
+        # 보정마다 고유하다. 시각만으로는 같은 초에 두 번 보정하면 구분이 안 되고,
+        # 그러면 스테이션 좌표가 낡았다는 것을 감지하지 못한다.
+        "calibration_id": _calibration.get("calibration_id") if _calibration else None,
         "saved_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
     try:
@@ -153,7 +186,8 @@ def calibration():
         "steps_per_mm": STEPS_PER_MM,
         # 보정을 실제로 마친 적이 있는가. 파일만 있고 calibrated_at 이 없으면
         # 위치만 저장된 것이므로 스트로크는 여전히 기본값이다.
-        "calibrated": bool(_calibration and _calibration.get("calibrated_at")),
+        "calibrated": bool(_calibration and _calibration.get("calibration_id")),
+        "calibration_id": _calibration.get("calibration_id") if _calibration else None,
         "calibrated_at": _calibration.get("calibrated_at") if _calibration else None,
         "calibrating": _calibrating,
         "calibration_travel_mm": round(_calib_travel_mm, 3) if _calibrating else None,
@@ -250,6 +284,7 @@ def end_calibration():
     _calib_travel_mm = 0.0
     _calibration = {
         "calibrated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "calibration_id": uuid.uuid4().hex,
     }
     _save_calibration()
     return calibration()
@@ -283,25 +318,45 @@ def jog_mm(distance_mm, speed_mm_s=5.0):
     return _position_mm
 
 
+def _stop_pulses():
+    """진행 중인 펄스를 즉시 끊고 큐를 비운다.
+
+    tx_pulse 에 on/off 를 둘 다 0 으로 주면 그 GPIO 의 전송이 취소된다.
+    """
+    try:
+        lgpio.tx_pulse(_chip, PUL_PIN, 0, 0)
+    except Exception:
+        pass
+
+
 def _send_pulses(steps, half_period_us):
     """정확히 steps개의 펄스를 전송하고 완료까지 기다린다."""
-    pi.wave_clear()
-    pi.wave_add_generic([
-        pigpio.pulse(1 << PUL_PIN, 0, half_period_us),
-        pigpio.pulse(0, 1 << PUL_PIN, half_period_us),
-    ])
-    wid = pi.wave_create()
-    try:
-        remaining = steps
-        while remaining > 0:
-            # wave_chain의 루프 반복 횟수는 16비트까지만 지정할 수 있다
-            chunk = min(remaining, 65535)
-            pi.wave_chain([255, 0, wid, 255, 1, chunk & 0xFF, chunk >> 8])
-            while pi.wave_tx_busy():
-                time.sleep(0.001)
-            remaining -= chunk
-    finally:
-        pi.wave_delete(wid)
+    remaining = steps
+    while remaining > 0:
+        chunk = min(remaining, MAX_PULSE_CYCLES)
+        _check(
+            lgpio.tx_pulse(_chip, PUL_PIN, half_period_us, half_period_us,
+                           pulse_offset=0, pulse_cycles=chunk),
+            "tx_pulse",
+        )
+
+        # 전송은 비동기로 시작된다. 곧바로 tx_busy 를 보면 아직 시작 전이라
+        # 0 이 나올 수 있으므로, 예상 소요시간의 대부분을 먼저 자고 나서 확인한다.
+        expected_s = chunk * 2 * half_period_us / 1_000_000
+        if expected_s > 0.01:
+            time.sleep(expected_s * 0.9)
+
+        # 타이밍이 밀리면 예상보다 오래 걸린다. 무한정 기다리지는 않는다.
+        deadline = time.monotonic() + expected_s * 0.5 + 5.0
+        while lgpio.tx_busy(_chip, PUL_PIN, lgpio.TX_PWM):
+            if time.monotonic() > deadline:
+                _stop_pulses()
+                raise RuntimeError(
+                    f"펄스 전송이 예상({expected_s:.1f}s)보다 오래 걸려 중단했습니다. "
+                    "속도를 낮춰 보세요."
+                )
+            time.sleep(0.001)
+        remaining -= chunk
 
 
 def _step_distance(distance_mm):
@@ -335,7 +390,7 @@ def _move_raw(distance_mm, speed_mm_s):
     forward = distance_mm > 0
     if INVERT_DIR:
         forward = not forward
-    pi.write(DIR_PIN, 1 if forward else 0)
+    _check(lgpio.gpio_write(_chip, DIR_PIN, 1 if forward else 0), "DIR 출력")
     time.sleep(0.005)   # 방향 신호 안정화 대기
 
     freq = speed_mm_s * STEPS_PER_MM
@@ -346,7 +401,7 @@ def _move_raw(distance_mm, speed_mm_s):
         _send_pulses(steps, half_period_us)
     except BaseException:
         # 중간에 끊기면 몇 펄스가 나갔는지 알 수 없다
-        pi.wave_tx_stop()
+        _stop_pulses()
         _position_known = False
         raise
 
@@ -393,10 +448,15 @@ def move_to_mm(target_mm, speed_mm_s=10.0):
 def cleanup():
     if _position_known:
         _save_calibration()
-    pi.wave_tx_stop()
-    pi.wave_clear()
-    pi.write(PUL_PIN, 0)
-    pi.stop()
+    _stop_pulses()
+    try:
+        lgpio.gpio_write(_chip, PUL_PIN, 0)
+        # ENA 를 풀어 모터 여자를 끊는다. 계속 물려 있으면 발열이 있다.
+        if ENA_PIN is not None:
+            lgpio.gpio_write(_chip, ENA_PIN, 1)
+        lgpio.gpiochip_close(_chip)
+    except Exception:
+        pass
 
 
 # 저장된 보정값이 있으면 STROKE_MM 과 마지막 위치를 여기서 되살린다.

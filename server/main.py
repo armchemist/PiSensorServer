@@ -335,7 +335,7 @@ def _rail_call(fn, *args):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:
         # 소프트 리밋 위반은 사용자 입력 문제이므로 400,
-        # 그 외(pigpiod 미실행 등)는 서비스 불가이므로 503.
+        # 그 외(lgpio 미설치, GPIO 확보 실패 등)는 서비스 불가이므로 503.
         name = type(exc).__name__
         if name == "SoftLimitError":
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -467,9 +467,13 @@ def _station_call(fn, *args, **kwargs):
 
 
 def _rail_frame():
-    """스테이션 좌표의 기준이 되는 값 — 스트로크와 보정 시각."""
+    """스테이션 좌표의 기준이 되는 값 — 스트로크와 보정 id.
+
+    보정 시각이 아니라 id 로 비교한다. 시각은 초 단위라 같은 초에 두 번
+    보정하면 구분되지 않고, 그러면 낡은 좌표를 잡아내지 못한다.
+    """
     cal = _rail_call(rail.calibration)
-    return cal["stroke_mm"], cal["calibrated_at"]
+    return cal["stroke_mm"], cal["calibration_id"]
 
 
 @app.get("/rail/stations")
