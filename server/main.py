@@ -32,6 +32,12 @@ from . import config
 from .hardware import thermal_render
 from .hardware.rail import RailBusy, rail
 from .hardware.sensors import reader as sensor_reader
+from .hardware.stations import (
+    StationError,
+    StationNotFound,
+    StationStale,
+    stations,
+)
 from .hardware.thermal import thermal
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -383,6 +389,12 @@ def rail_resume():
 # 움직일 수 있는 거리가 제한되고, 일반 이동(/rail/move 등)은 거부된다.
 
 
+@app.get("/rail/ui", include_in_schema=False)
+def rail_ui():
+    """레일 보정·스테이션 등록용 웹 UI. 브라우저에서 이 주소를 열면 된다."""
+    return FileResponse(STATIC_DIR / "rail.html")
+
+
 @app.get("/rail/calibration")
 def rail_calibration():
     """보정 상태. UI가 보정 버튼을 띄울지 판단하는 데 쓴다."""
@@ -415,3 +427,133 @@ def rail_jog(req: JogRequest):
     """
     pos = _rail_call(rail.jog, req.mm, req.speed_mm_s)
     return {"position_mm": pos}
+
+
+# ===== 스테이션 =====
+# 레일 위 이름 붙은 지점들(시약존, 실험존 ...). 에이전트는 mm 대신 이름을 쓴다.
+# 이름이 닫힌 집합이라 잘못된 값은 이동이 아니라 404 가 된다.
+
+
+class StationRequest(BaseModel):
+    name: str = Field(description="스테이션 이름 (예: 시약존)")
+    mm: Optional[float] = Field(
+        default=None,
+        description="좌표(mm). 생략하면 지금 캐리지가 있는 자리를 쓴다(티치인)",
+    )
+    overwrite: bool = Field(default=False, description="같은 이름이 있으면 덮어쓴다")
+
+
+class StationPatch(BaseModel):
+    mm: Optional[float] = Field(default=None, description="새 좌표(mm)")
+    name: Optional[str] = Field(default=None, description="새 이름")
+
+
+class GotoRequest(BaseModel):
+    station: str = Field(description="이동할 스테이션 이름")
+    speed_mm_s: float = Field(default=5.0, gt=0, le=200)
+
+
+def _station_call(fn, *args, **kwargs):
+    """스테이션 호출의 예외를 HTTP 상태 코드로 옮긴다."""
+    try:
+        return fn(*args, **kwargs)
+    except StationNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except StationStale as exc:
+        # 사용자가 재등록하거나 revalidate 로 풀어야 하는 상태라 409.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except StationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _rail_frame():
+    """스테이션 좌표의 기준이 되는 값 — 스트로크와 보정 시각."""
+    cal = _rail_call(rail.calibration)
+    return cal["stroke_mm"], cal["calibrated_at"]
+
+
+@app.get("/rail/stations")
+def rail_stations():
+    stroke, at = _rail_frame()
+    return _station_call(stations.list, stroke, at)
+
+
+@app.post("/rail/stations")
+def rail_station_add(req: StationRequest):
+    """스테이션 등록. mm 를 생략하면 지금 캐리지가 있는 자리를 기록한다.
+
+    자로 재서 넣는 것보다 캐리지를 그 자리로 옮긴 뒤 이름만 붙이는 편이
+    정확하다. UI 의 '여기를 등록' 버튼이 이걸 쓴다.
+    """
+    stroke, at = _rail_frame()
+    mm = req.mm
+    if mm is None:
+        cal = _rail_call(rail.calibration)
+        if not cal["position_known"]:
+            raise HTTPException(
+                status_code=400,
+                detail="현재 위치를 모르는 상태라 티치인할 수 없습니다. "
+                       "/rail/resume 또는 /rail/set_position 을 먼저 부르세요.",
+            )
+        mm = cal["position_mm"]
+    return _station_call(stations.add, req.name, mm, stroke, at, overwrite=req.overwrite)
+
+
+@app.patch("/rail/stations/{name}")
+def rail_station_update(name: str, req: StationPatch):
+    stroke, at = _rail_frame()
+    return _station_call(
+        stations.update, name, stroke, at, position_mm=req.mm, new_name=req.name
+    )
+
+
+@app.delete("/rail/stations/{name}")
+def rail_station_remove(name: str):
+    return _station_call(stations.remove, name)
+
+
+@app.post("/rail/stations/revalidate")
+def rail_stations_revalidate():
+    """재보정 후에도 좌표가 그대로 유효하다고 사용자가 확인해 준다.
+
+    보정 원점이 바뀌면 저장된 mm 가 엉뚱한 곳을 가리킬 수 있어서 기본적으로
+    막아 둔다. 같은 자리에서 다시 보정한 경우처럼 실제로 안 바뀌었다면 이걸로 푼다.
+    """
+    _, at = _rail_frame()
+    return _station_call(stations.revalidate, at)
+
+
+@app.post("/rail/goto")
+def rail_goto(req: GotoRequest):
+    """이름으로 이동한다. **에이전트가 쓸 것은 이것이다.**
+
+    /rail/move_to 는 mm 를 직접 받으므로 사람이 보정·디버깅할 때만 쓴다.
+    """
+    stroke, at = _rail_frame()
+    target = _station_call(stations.target_mm, req.station, stroke, at)
+    pos = _rail_call(rail.move_to, target, req.speed_mm_s)
+    return {"station": req.station, "position_mm": pos}
+
+
+@app.get("/rail/where")
+def rail_where():
+    """지금 어느 스테이션에 있나. 가장 가까운 것과의 거리도 같이 준다."""
+    cal = _rail_call(rail.calibration)
+    if not cal["position_known"]:
+        return {"position_known": False, "station": None, "nearest": None}
+
+    pos = cal["position_mm"]
+    listed = stations.list(cal["stroke_mm"], cal["calibrated_at"])["stations"]
+    if not listed:
+        return {"position_known": True, "position_mm": pos, "station": None, "nearest": None}
+
+    nearest = min(listed, key=lambda st: abs(st["position_mm"] - pos))
+    delta = round(nearest["position_mm"] - pos, 3)
+    return {
+        "position_known": True,
+        "position_mm": pos,
+        # 0.5mm 안쪽이면 그 스테이션에 있는 것으로 본다. 스텝 분해능이
+        # 1/160mm 라 정확히 일치하는 경우는 드물다.
+        "station": nearest["name"] if abs(delta) <= 0.5 else None,
+        "nearest": {"name": nearest["name"], "delta_mm": delta},
+    }

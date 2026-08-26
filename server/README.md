@@ -161,6 +161,14 @@ sudo systemctl start pi-sensor-server
 | `POST` | `/rail/calibration/begin` | 지금 자리를 시작 지점으로 지정 |
 | `POST` | `/rail/calibration/end` | 지금 자리를 종료 지점으로 확정, 저장 |
 | `POST` | `/rail/calibration/cancel` | 보정 취소 |
+| `GET` | `/rail/ui` | 보정·스테이션 등록 웹 UI (브라우저에서 열기) |
+| `GET` | `/rail/stations` | 스테이션 목록 |
+| `POST` | `/rail/stations` | 등록. `mm` 생략 시 현재 위치(티치인) |
+| `PATCH` | `/rail/stations/{name}` | 좌표·이름 수정 |
+| `DELETE` | `/rail/stations/{name}` | 삭제 |
+| `POST` | `/rail/stations/revalidate` | 재보정 후에도 좌표가 유효하다고 인정 |
+| `POST` | `/rail/goto` | **에이전트용.** 이름으로 이동 `{"station": "시약존"}` |
+| `GET` | `/rail/where` | 지금 어느 스테이션에 있나 |
 
 ### 상태 코드
 
@@ -226,6 +234,67 @@ curl -X POST http://lab-pi:8000/rail/set_position \
 지금 확인이 필요한 상태인지 알 수 있다.
 
 자세한 내용은 [`rail/README.md`](../rail/README.md) 참고.
+
+## 스테이션 — 레일 위 이름 붙은 지점
+
+`37.5mm` 대신 `시약존`. **에이전트에게 mm 를 주면 LLM 이 숫자를 만들어낸다.**
+이름을 닫힌 집합으로 두면 잘못된 값은 이동이 아니라 `404` 가 되고, 환각해도
+물리적으로 아무 일이 없다. 장비를 옮겨 실제 위치가 바뀌어도 이 표만 고치면
+에이전트 쪽 코드는 그대로다.
+
+좌표는 **점**이다. `goto` 하면 캐리지가 정확히 그 자리에 선다.
+
+### 등록은 티치인으로
+
+자로 재서 mm 를 넣는 것보다, 캐리지를 그 자리로 옮긴 뒤 이름만 붙이는 편이
+정확하다. `mm` 을 생략하면 지금 위치가 기록된다.
+
+```bash
+# 캐리지를 시약 놓는 자리로 옮긴 뒤
+curl -X POST http://lab-pi:8000/rail/stations \
+     -H 'Content-Type: application/json' -d '{"name": "시약존"}'
+```
+
+### 에이전트는 goto 만 쓴다
+
+```bash
+curl -X POST http://lab-pi:8000/rail/goto \
+     -H 'Content-Type: application/json' -d '{"station": "시약존"}'
+```
+
+`/rail/move_to` 는 mm 를 직접 받으므로 **사람이 보정·디버깅할 때만** 쓴다.
+에이전트에게 노출하는 도구 목록에서는 빼는 것이 좋다.
+
+### ⚠️ 재보정하면 좌표가 막힌다
+
+스테이션의 mm 는 보정으로 정한 원점 기준이다. 다시 보정하면 원점이 달라질 수
+있어서 저장된 좌표가 엉뚱한 곳을 가리킬 수 있다.
+
+그래서 어느 보정 기준인지 함께 저장해 두고, 달라지면 `stale` 로 표시하고
+`goto` 를 `409` 로 거부한다. 둘 중 하나로 푼다.
+
+- 스테이션을 **다시 등록**한다 (권장)
+- 같은 자리에서 다시 보정한 경우처럼 실제로 안 바뀌었다면
+  `POST /rail/stations/revalidate` 로 인정한다
+
+번거롭지만, 틀린 자리로 로봇 팔이 가는 것보다 낫다.
+
+저장 위치는 `rail/stations.json`. 보정값과 수명이 달라 파일을 나눴다.
+
+## 웹 UI
+
+브라우저에서 열면 보정과 스테이션 등록을 클릭으로 할 수 있다.
+
+```
+http://lab-pi:8000/rail/ui
+```
+
+- 현재 위치·스트로크·보정 여부를 한눈에
+- 위치를 모르는 상태면 확인 패널이 먼저 뜬다
+- jog 버튼(±0.5 ~ ±10mm)으로 캐리지를 옮기고 **여기를 등록**
+- 재보정으로 좌표가 막히면 경고와 함께 인정 버튼이 나온다
+
+API 키를 걸었다면 `?api_key=...` 를 붙여 한 번 열면 이후 브라우저가 기억한다.
 
 ## 열화상 카메라 (ThermoEye TMC160F)
 

@@ -18,3 +18,4 @@ venv/
 
 # 레일 보정값 (실측 스트로크 + 마지막 위치). 장비마다 다르므로 커밋하지 않는다
 rail/calibration.json
+rail/stations.json

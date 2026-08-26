@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>레일 보정 — 리니어 스테이지</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f26; --line: #2c313b;
+    --fg: #e6e8ec; --dim: #8b93a1; --accent: #ff8c42;
+    --ok: #5fd08a; --warn: #ffc857; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+          "Noto Sans KR", Segoe UI, sans-serif;
+  }
+  header {
+    padding: 12px 18px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .status { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .status b { color: var(--fg); font-weight: 600; }
+  .wrap { padding: 18px; max-width: 680px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px; margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--dim); margin: 0 0 10px; font-weight: 600;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button {
+    background: #262b34; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 12px; cursor: pointer; font: inherit;
+  }
+  button:hover:not(:disabled) { background: #2f3540; }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1207; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #ff9d5c; }
+  button.danger { border-color: #55323a; color: #ffb3b3; }
+  input {
+    background: #12141a; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 9px; font: inherit; width: 110px;
+  }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 10px; }
+  .bar { height: 8px; background: #12141a; border-radius: 4px; position: relative; margin: 10px 0 4px; }
+  .bar i { position: absolute; top: -3px; width: 3px; height: 14px; background: var(--accent); border-radius: 2px; }
+  .bar s { position: absolute; top: -1px; width: 2px; height: 10px; background: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  td:nth-child(2) { color: var(--dim); text-align: right; width: 90px; }
+  td:last-child { width: 130px; text-align: right; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+  .tag.ok { color: var(--ok); background: #1a2f24; }
+  .tag.warn { color: var(--warn); background: #2f2718; }
+  .tag.bad { color: var(--bad); background: #2f1a1a; }
+  #toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    background: #2f1a1a; color: #ffb3b3; border: 1px solid #55323a;
+    padding: 9px 14px; border-radius: 8px; font-size: 13px; max-width: 90vw;
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #toast.ok { background: #1a2f24; color: #b9f0cd; border-color: #2f5a41; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>레일 보정</h1>
+  <span class="status" id="head"></span>
+</header>
+
+<div class="wrap">
+
+  <!-- 위치 확인: 위치를 모를 때만 보인다 -->
+  <div class="panel" id="p-confirm" hidden>
+    <h2>⚠️ 현재 위치를 모릅니다</h2>
+    <p class="hint" style="margin-top:0">
+      전원이 꺼진 사이 캐리지가 밀렸을 수 있어서, 서버를 띄우면 위치는 항상
+      미상으로 시작합니다. 확인해 주기 전까지 이동이 거부됩니다.
+    </p>
+    <div class="row">
+      <button class="primary" id="b-resume">건드리지 않았음 — 저장된 위치 사용</button>
+      <input id="i-setpos" type="number" step="0.1" placeholder="실제 mm">
+      <button id="b-setpos">이 위치로 지정</button>
+    </div>
+  </div>
+
+  <!-- 보정 -->
+  <div class="panel">
+    <h2>보정 — 양 끝 지정</h2>
+    <div id="cal-idle">
+      <p class="hint" style="margin-top:0">
+        리미트스위치가 없어서 원점을 기계적으로 찾을 수 없습니다. 캐리지를
+        <b>한쪽 끝</b>에 두고 시작한 뒤, 반대쪽 끝까지 옮기고 확정하세요.
+      </p>
+      <button class="primary" id="b-cal-begin">보정 시작</button>
+    </div>
+    <div id="cal-active" hidden>
+      <p class="hint" style="margin-top:0">
+        시작 지점을 <b>0</b>으로 잡았습니다. 반대쪽 끝까지 옮기고 확정하세요.
+        보정 중에는 소프트 리밋이 없으니 <b>끝단에 닿지 않게</b> 주의하세요.
+      </p>
+      <div class="row">
+        <button class="primary" id="b-cal-end">여기를 반대쪽 끝으로 확정</button>
+        <button class="danger" id="b-cal-cancel">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 이동 -->
+  <div class="panel">
+    <h2>이동</h2>
+    <div class="bar" id="bar"><i id="bar-pos"></i></div>
+    <div class="status" id="bar-label"></div>
+    <div class="row" style="margin-top:10px">
+      <button data-jog="-10">−10</button>
+      <button data-jog="-5">−5</button>
+      <button data-jog="-1">−1</button>
+      <button data-jog="-0.5">−0.5</button>
+      <button data-jog="0.5">+0.5</button>
+      <button data-jog="1">+1</button>
+      <button data-jog="5">+5</button>
+      <button data-jog="10">+10</button>
+    </div>
+    <div class="hint">속도 5mm/s 고정. 한 번에 20mm 까지만 움직일 수 있습니다.</div>
+  </div>
+
+  <!-- 스테이션 -->
+  <div class="panel">
+    <h2>스테이션</h2>
+    <div id="st-stale" hidden style="margin-bottom:10px">
+      <span class="tag bad">재보정됨</span>
+      <span class="hint">저장된 좌표를 믿을 수 없습니다. 다시 등록하거나 그대로 인정하세요.</span>
+      <div class="row" style="margin-top:8px">
+        <button id="b-revalidate">좌표 그대로 인정</button>
+      </div>
+    </div>
+    <table id="st-table"></table>
+    <div class="row" style="margin-top:12px">
+      <input id="i-stname" placeholder="시약존" style="width:150px">
+      <button class="primary" id="b-teach">여기를 등록</button>
+    </div>
+    <div class="hint">지금 캐리지가 있는 자리가 그 이름으로 저장됩니다.</div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// API 키가 걸려 있으면 ?api_key=... 로 열거나 localStorage 에 넣어 둔다.
+const params = new URLSearchParams(location.search);
+const API_KEY = params.get("api_key") || localStorage.getItem("api_key") || "";
+if (params.get("api_key")) localStorage.setItem("api_key", params.get("api_key"));
+
+function url(path) {
+  const u = new URL(path, location.origin);
+  if (API_KEY) u.searchParams.set("api_key", API_KEY);
+  return u.toString();
+}
+async function api(path, method = "GET", body) {
+  const res = await fetch(url(path), {
+    method,
+    headers: { "Content-Type": "application/json", ...(API_KEY ? { "X-API-Key": API_KEY } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+
+const $ = (id) => document.getElementById(id);
+let cal = null, sts = null, busy = false;
+
+function toast(msg, ok = false) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "show" + (ok ? " ok" : "");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => (t.className = ""), ok ? 2200 : 5000);
+}
+
+// 하드웨어를 건드리는 동안 버튼을 잠근다. 이동은 초 단위로 걸리고, 서버는
+// 동시 이동을 409 로 거부하므로 눌러봤자 에러만 난다.
+async function act(fn) {
+  if (busy) return;
+  busy = true; render();
+  try { await fn(); await refresh(); }
+  catch (e) { toast(e.message); await refresh(); }
+  finally { busy = false; render(); }
+}
+
+async function refresh() {
+  cal = await api("/rail/calibration");
+  sts = await api("/rail/stations");
+  render();
+}
+
+function render() {
+  if (!cal) return;
+  const known = cal.position_known, calibrating = cal.calibrating;
+
+  $("head").innerHTML =
+    `스트로크 <b>${cal.stroke_mm.toFixed(1)}mm</b> · ` +
+    `위치 <b>${known ? cal.position_mm.toFixed(2) + "mm" : "미상"}</b> · ` +
+    (calibrating ? `<span class="tag warn">보정 중</span>`
+     : cal.calibrated ? `<span class="tag ok">보정됨</span>`
+     : `<span class="tag warn">미보정</span>`);
+
+  $("p-confirm").hidden = known;
+  $("cal-idle").hidden = calibrating;
+  $("cal-active").hidden = !calibrating;
+
+  // 이동 막대 — 보정 중에는 스트로크가 의미 없으니 감춘다
+  const frac = known && !calibrating ? cal.position_mm / cal.stroke_mm : null;
+  $("bar").style.visibility = frac === null ? "hidden" : "visible";
+  if (frac !== null) $("bar-pos").style.left = `calc(${Math.min(1, Math.max(0, frac)) * 100}% - 1px)`;
+  $("bar-label").textContent = calibrating
+    ? `시작점에서 ${cal.position_mm.toFixed(2)}mm`
+    : known ? `0 ─ ${cal.stroke_mm.toFixed(1)}mm` : "";
+
+  for (const b of document.querySelectorAll("[data-jog]")) b.disabled = busy || !known;
+  $("b-cal-begin").disabled = busy;
+  $("b-cal-end").disabled = busy;
+  $("b-cal-cancel").disabled = busy;
+  $("b-teach").disabled = busy || !known || calibrating;
+
+  const stale = sts && sts.stale && sts.stations.length > 0;
+  $("st-stale").hidden = !stale;
+
+  const t = $("st-table");
+  t.innerHTML = "";
+  if (!sts || !sts.stations.length) {
+    t.innerHTML = `<tr><td colspan="3" class="hint">등록된 스테이션이 없습니다.</td></tr>`;
+    return;
+  }
+  for (const st of sts.stations) {
+    const tr = document.createElement("tr");
+    const bad = st.stale || st.out_of_range;
+    tr.innerHTML =
+      `<td>${st.name}${st.out_of_range ? ' <span class="tag bad">범위 밖</span>' : ""}</td>` +
+      `<td>${st.position_mm.toFixed(2)}mm</td><td></td>`;
+    const cell = tr.lastElementChild;
+    const go = document.createElement("button");
+    go.textContent = "이동";
+    go.disabled = busy || !known || calibrating || bad;
+    go.onclick = () => act(() => api("/rail/goto", "POST", { station: st.name, speed_mm_s: 5 }));
+    const del = document.createElement("button");
+    del.textContent = "삭제"; del.className = "danger"; del.disabled = busy;
+    del.onclick = () => act(() => api(`/rail/stations/${encodeURIComponent(st.name)}`, "DELETE"));
+    cell.append(go, " ", del);
+    t.append(tr);
+  }
+}
+
+for (const b of document.querySelectorAll("[data-jog]")) {
+  b.onclick = () => act(() => api("/rail/jog", "POST", { mm: +b.dataset.jog, speed_mm_s: 5 }));
+}
+$("b-resume").onclick = () => act(() => api("/rail/resume", "POST"));
+$("b-setpos").onclick = () => act(async () => {
+  const v = parseFloat($("i-setpos").value);
+  if (Number.isNaN(v)) throw new Error("mm 값을 입력하세요.");
+  await api("/rail/set_position", "POST", { mm: v });
+});
+$("b-cal-begin").onclick = () => act(() => api("/rail/calibration/begin", "POST"));
+$("b-cal-cancel").onclick = () => act(() => api("/rail/calibration/cancel", "POST"));
+$("b-cal-end").onclick = () => act(async () => {
+  const r = await api("/rail/calibration/end", "POST");
+  toast(`스트로크 ${r.stroke_mm.toFixed(2)}mm 로 저장했습니다.`, true);
+});
+$("b-teach").onclick = () => act(async () => {
+  const name = $("i-stname").value.trim();
+  if (!name) throw new Error("이름을 입력하세요.");
+  await api("/rail/stations", "POST", { name, overwrite: true });
+  $("i-stname").value = "";
+  toast(`'${name}' 등록됨`, true);
+});
+$("b-revalidate").onclick = () => act(() => api("/rail/stations/revalidate", "POST"));
+
+refresh().catch((e) => toast("서버에 붙지 못했습니다: " + e.message));
+</script>
+</body>
+</html>
