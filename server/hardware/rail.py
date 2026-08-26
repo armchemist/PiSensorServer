@@ -91,6 +91,17 @@ class Rail:
         finally:
             self._move_lock.release()
 
+    def abort(self):
+        """진행 중인 이동을 멈춘다.
+
+        이동 스레드가 _move_lock 을 쥐고 있으므로 여기서는 락을 잡지 않는다.
+        잡으려 하면 이동이 끝날 때까지 기다리게 되어 정지가 되지 않는다.
+        """
+        stage = self._load()
+        was_moving = self._move_lock.locked()
+        stage.abort()
+        return {"was_moving": was_moving}
+
     def set_position(self, value_mm):
         """캐리지를 손으로 옮겼을 때 현재 위치를 다시 알려준다."""
         stage = self._load()

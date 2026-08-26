@@ -27,6 +27,7 @@ lgpio 는 커널의 GPIO 캐릭터 장치를 거치므로 칩 종류를 타지 �
 
 import json
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -112,6 +113,15 @@ _calibration = None         # 파일에서 읽은 보정 정보(없으면 None)
 
 class SoftLimitError(RuntimeError):
     """소프트 리밋을 벗어나거나, 현재 위치를 신뢰할 수 없는 상태."""
+
+
+class MoveAborted(RuntimeError):
+    """사람이 중간에 멈췄다. 몇 펄스가 나갔는지 알 수 없어 위치를 잃는다."""
+
+
+# 이동은 블로킹으로 돌아간다. 정지 요청은 다른 스레드에서 들어오므로 플래그로
+# 주고받는다. 서버가 요청마다 스레드를 쓰기 때문에 이동 중에도 처리된다.
+_abort = threading.Event()
 
 
 def _check(rc, what):
@@ -372,6 +382,8 @@ def _send_pulses(steps, half_period_us):
         # 타이밍이 밀리면 예상보다 오래 걸린다. 무한정 기다리지는 않는다.
         deadline = time.monotonic() + expected_s * 0.5 + 5.0
         while lgpio.tx_busy(_chip, PUL_PIN, lgpio.TX_PWM):
+            if _abort.is_set():
+                break
             if time.monotonic() > deadline:
                 _stop_pulses()
                 raise RuntimeError(
@@ -379,6 +391,11 @@ def _send_pulses(steps, half_period_us):
                     "속도를 낮춰 보세요."
                 )
             time.sleep(0.001)
+
+        # abort() 가 전송을 이미 끊었다면 위 루프는 정상 종료처럼 빠져나온다.
+        # 플래그를 다시 봐야 "다 보냈다"고 착각하지 않는다.
+        if _abort.is_set():
+            raise MoveAborted("사용자가 이동을 중단했습니다.")
         remaining -= chunk
 
 
@@ -410,6 +427,7 @@ def _move_raw(distance_mm, speed_mm_s):
     if steps == 0:
         return _position_mm
 
+    _abort.clear()
     forward = distance_mm > 0
     if INVERT_DIR:
         forward = not forward
@@ -461,6 +479,19 @@ def move_mm(distance_mm, speed_mm_s=10.0):
     # 다음 부팅에서 이어 쓸 수 있도록 남긴다. 신뢰 여부는 그때 다시 묻는다.
     _save_calibration()
     return _position_mm
+
+
+def abort():
+    """진행 중인 이동을 즉시 멈춘다.
+
+    전송을 끊고 플래그를 세운다. 이동 중인 스레드가 그것을 보고 MoveAborted 를
+    던지며, move_mm 의 예외 경로가 위치를 미상으로 되돌린다. 몇 펄스가 나갔는지
+    알 수 없으므로 그래야 한다.
+
+    이동 중이 아니어도 안전하게 부를 수 있다.
+    """
+    _abort.set()
+    _stop_pulses()
 
 
 def move_to_mm(target_mm, speed_mm_s=10.0):

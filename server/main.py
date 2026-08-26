@@ -339,6 +339,10 @@ def _rail_call(fn, *args):
         name = type(exc).__name__
         if name == "SoftLimitError":
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if name == "MoveAborted":
+            # 사람이 일부러 멈춘 것이므로 장애가 아니다. 다만 요청한 이동은
+            # 완료되지 않았고 위치도 잃었으므로 성공으로 처리하면 안 된다.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
@@ -364,6 +368,16 @@ def rail_set_position(req: SetPositionRequest):
     """이동이 중단돼 위치를 잃었을 때 실제 위치를 다시 알려준다."""
     pos = _rail_call(rail.set_position, req.mm)
     return {"position_mm": pos}
+
+
+@app.post("/rail/stop")
+def rail_stop():
+    """진행 중인 이동을 즉시 멈춘다.
+
+    멈추면 몇 펄스가 나갔는지 알 수 없으므로 **위치를 잃는다.** 이후 이동은
+    /rail/resume 이 아니라 /rail/set_position 으로 실제 위치를 알려줘야 풀린다.
+    """
+    return _rail_call(rail.abort)
 
 
 @app.post("/rail/resume")

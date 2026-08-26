@@ -42,6 +42,11 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #1a1207; font-weight: 600; }
   button.primary:hover:not(:disabled) { background: #ff9d5c; }
   button.danger { border-color: #55323a; color: #ffb3b3; }
+  button.stop {
+    background: #b3261e; border-color: #b3261e; color: #fff; font-weight: 700;
+    padding: 9px 20px;
+  }
+  button.stop:hover:not(:disabled) { background: #cc3329; }
   input {
     background: #12141a; color: var(--fg); border: 1px solid var(--line);
     border-radius: 7px; padding: 7px 9px; font: inherit; width: 110px;
@@ -128,6 +133,7 @@
     <div class="row" style="margin-top:8px">
       <button id="b-back">← 뒤로</button>
       <button id="b-fwd">앞으로 →</button>
+      <button class="stop" id="b-stop" disabled>■ 정지</button>
       <span class="hint" id="move-est"></span>
     </div>
     <div class="row" style="margin-top:12px">
@@ -227,7 +233,7 @@ async function act(fn, to) {
   busy = true; render();
   startAnim(to);
   try { await fn(); }
-  catch (e) { toast(e.message); }
+  catch (e) { if (!/중단/.test(e.message)) toast(e.message); }
   finally { anim = null; busy = false; await refresh(); }
 }
 
@@ -265,6 +271,8 @@ function render() {
 
   for (const b of document.querySelectorAll("[data-jog]")) b.disabled = busy || !known;
   $("b-fwd").disabled = $("b-back").disabled = busy || !known;
+  // 정지는 이동 중에만 의미가 있다. 다른 버튼과 반대로 busy 일 때 켜진다.
+  $("b-stop").disabled = !busy;
 
   // 입력 상한은 서버가 알려준 값을 쓴다.
   const maxSpeed = cal.max_speed_mm_s;
@@ -376,6 +384,15 @@ function estimate() {
   $("move-est").textContent =
     Number.isFinite(d) && d > 0 ? `약 ${(d / v).toFixed(1)}초` : "";
 }
+// 정지는 이동이 진행 중일 때 눌린다. act() 는 busy 면 무시하므로 직접 보낸다.
+$("b-stop").onclick = async () => {
+  anim = null;                       // 추정 표시를 즉시 멈춘다
+  try {
+    await api("/rail/stop", "POST");
+    toast("정지했습니다. 위치를 잃었으니 실제 위치를 지정해 주세요.");
+  } catch (e) { toast(e.message); }
+};
+
 $("b-resume").onclick = () => act(() => api("/rail/resume", "POST"));
 $("b-setpos").onclick = () => act(async () => {
   const v = parseFloat($("i-setpos").value);
