@@ -16,8 +16,13 @@
 되면(이동 중 중단 등) 이동을 거부하고 set_position_mm() 재선언을 요구한다.
 """
 
-import pigpio
+import json
+import os
 import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pigpio
 
 # ===== 설정값 (본인 환경에 맞게 수정) =====
 PUL_PIN = 22
@@ -42,12 +47,32 @@ MAX_SPEED_MM_S = 100.0
 
 MAX_PULSE_HZ = 100000   # 드라이버 한계(127kHz) 아래로 제한
 MIN_PULSE_HZ = 100
+
+# --- 보정 ---
+# 실측한 스트로크와 마지막 위치를 여기 저장한다. 서버를 껐다 켜도 남는다.
+CALIBRATION_PATH = Path(__file__).with_name("calibration.json")
+
+# 보정 중에는 소프트 리밋이 없다(스트로크를 아직 모르니까). 대신 한 번에
+# 움직일 수 있는 거리와 누적 거리를 제한해 폭주를 막는다.
+MAX_JOG_MM = 20.0
+CALIB_MAX_TRAVEL_MM = 2000.0
+MIN_STROKE_MM = 1.0     # 이보다 짧으면 실수로 본다
 # =========================================
 
 STEPS_PER_MM = (STEPS_PER_REV * MICROSTEP) / LEAD_MM
 
+# 보정값이 있으면 STROKE_MM 을 실측치로 덮어쓴다. 아래 _load_calibration() 참고.
 _position_mm = START_POSITION_MM
-_position_known = True
+
+# 임포트 시점에는 캐리지가 어디 있는지 알 수 없다. 전원이 꺼진 사이 손으로
+# 밀렸을 수도 있으므로, 저장된 위치가 있어도 사용자가 확인해 주기 전까지는
+# 모르는 것으로 취급한다. resume_position() 또는 set_position_mm() 이 필요하다.
+_position_known = False
+
+# 보정 모드 상태. 사용자가 begin_calibration() 을 부를 때만 켜진다.
+_calibrating = False
+_calib_travel_mm = 0.0      # 누적 이동 거리(폭주 감지용, 절대값 합)
+_calibration = None         # 파일에서 읽은 보정 정보(없으면 None)
 
 
 class SoftLimitError(RuntimeError):
@@ -66,6 +91,77 @@ if ENA_PIN is not None:
     pi.write(ENA_PIN, 0)      # 0 = 모터 활성 유지
 
 
+def _save_calibration():
+    """스트로크와 현재 위치를 파일에 쓴다. 쓰기 실패는 치명적이지 않다."""
+    data = {
+        "stroke_mm": round(STROKE_MM, 4),
+        # 분주나 리드를 바꾸면 이전 보정값의 mm 환산이 달라진다. 같이 적어
+        # 두고 불일치하면 무시한다.
+        "steps_per_mm": round(STEPS_PER_MM, 6),
+        "position_mm": round(_position_mm, 4),
+        "calibrated_at": _calibration.get("calibrated_at") if _calibration else None,
+        "saved_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+    }
+    try:
+        # 쓰다 죽어도 기존 파일이 깨지지 않도록 임시 파일에 쓰고 바꿔치기한다.
+        tmp = CALIBRATION_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        os.replace(tmp, CALIBRATION_PATH)
+    except OSError:
+        pass
+    return data
+
+
+def _load_calibration():
+    """저장된 보정값을 읽어 STROKE_MM 과 마지막 위치에 반영한다.
+
+    위치는 불러오되 _position_known 은 False 로 둔다. 전원이 꺼진 사이
+    캐리지를 손으로 밀 수 있으므로, 저장돼 있다는 것만으로는 신뢰할 수 없다.
+    """
+    global STROKE_MM, _position_mm, _calibration
+
+    try:
+        data = json.loads(CALIBRATION_PATH.read_text())
+    except (OSError, ValueError):
+        return None
+
+    saved_spm = data.get("steps_per_mm")
+    if saved_spm is not None and abs(saved_spm - STEPS_PER_MM) > 1e-6:
+        # LEAD_MM / MICROSTEP 을 바꾼 경우. mm 값이 더 이상 같은 뜻이 아니다.
+        print(
+            f"[stage] 보정값 무시: steps_per_mm 불일치 "
+            f"(저장 {saved_spm} vs 현재 {STEPS_PER_MM}). 다시 보정하세요."
+        )
+        return None
+
+    stroke = data.get("stroke_mm")
+    if isinstance(stroke, (int, float)) and stroke >= MIN_STROKE_MM:
+        STROKE_MM = float(stroke)
+
+    pos = data.get("position_mm")
+    if isinstance(pos, (int, float)) and 0.0 <= pos <= STROKE_MM:
+        _position_mm = float(pos)
+
+    _calibration = data
+    return data
+
+
+def calibration():
+    """현재 보정 상태. 서버가 그대로 내보낸다."""
+    return {
+        "stroke_mm": STROKE_MM,
+        "steps_per_mm": STEPS_PER_MM,
+        # 보정을 실제로 마친 적이 있는가. 파일만 있고 calibrated_at 이 없으면
+        # 위치만 저장된 것이므로 스트로크는 여전히 기본값이다.
+        "calibrated": bool(_calibration and _calibration.get("calibrated_at")),
+        "calibrated_at": _calibration.get("calibrated_at") if _calibration else None,
+        "calibrating": _calibrating,
+        "calibration_travel_mm": round(_calib_travel_mm, 3) if _calibrating else None,
+        "position_mm": round(_position_mm, 3),
+        "position_known": _position_known,
+    }
+
+
 def position_mm():
     """현재 추정 위치(mm)."""
     return _position_mm
@@ -74,8 +170,117 @@ def position_mm():
 def set_position_mm(value):
     """캐리지를 손으로 옮겼거나 위치를 잃었을 때 현재 위치를 다시 알려준다."""
     global _position_mm, _position_known
-    _position_mm = float(value)
+    value = float(value)
+    if not 0.0 <= value <= STROKE_MM:
+        raise SoftLimitError(
+            f"{value:.2f}mm 는 허용 범위(0.00~{STROKE_MM:.2f}mm) 밖입니다."
+        )
+    _position_mm = value
     _position_known = True
+    _save_calibration()
+    return _position_mm
+
+
+def resume_position():
+    """저장된 위치를 그대로 쓴다 — 전원이 꺼진 사이 캐리지를 건드리지 않았을 때.
+
+    서버를 다시 띄우면 위치는 항상 '모름'으로 시작한다. 캐리지를 손대지
+    않았다면 이걸 불러 그대로 이어 쓴다. 손댔다면 set_position_mm() 을 쓴다.
+    """
+    global _position_known
+    if _calibration is None:
+        raise SoftLimitError(
+            "저장된 위치가 없습니다. 보정을 하거나 set_position_mm()으로 알려주세요."
+        )
+    _position_known = True
+    return _position_mm
+
+
+# ===== 보정 =====
+# 리미트 스위치가 없어서 원점을 기계적으로 찾을 수 없다. 대신 사용자가 양 끝을
+# 직접 지정한다. 보정 중에는 절대 위치가 필요 없다 — 상대 이동만 쓰기 때문이다.
+
+
+def begin_calibration():
+    """보정 모드 시작. 지금 캐리지가 있는 자리를 기준점(0)으로 잡는다."""
+    global _calibrating, _calib_travel_mm, _position_mm, _position_known
+    if _calibrating:
+        raise SoftLimitError("이미 보정 중입니다.")
+    _calibrating = True
+    _calib_travel_mm = 0.0
+    _position_mm = 0.0
+    _position_known = True   # 보정 안에서만 통하는 상대 기준
+    return calibration()
+
+
+def cancel_calibration():
+    """보정을 버린다. 위치는 다시 '모름'이 된다."""
+    global _calibrating, _calib_travel_mm, _position_known
+    if not _calibrating:
+        raise SoftLimitError("보정 중이 아닙니다.")
+    _calibrating = False
+    _calib_travel_mm = 0.0
+    _position_known = False
+    return calibration()
+
+
+def end_calibration():
+    """지금 자리를 반대쪽 끝으로 확정하고 스트로크를 저장한다.
+
+    시작점에서의 순수 변위가 스트로크가 된다. 뒤로 갔다면(변위가 음수) 지금
+    자리가 더 낮은 쪽이므로 그쪽을 0 으로 삼는다. 즉 0 은 항상 두 지점 중
+    좌표가 낮은 쪽이고, mm 는 정방향으로 증가한다.
+    """
+    global STROKE_MM, _calibrating, _calib_travel_mm, _position_mm, _calibration
+
+    if not _calibrating:
+        raise SoftLimitError("보정 중이 아닙니다. begin_calibration() 부터 부르세요.")
+
+    net = _position_mm
+    stroke = abs(net)
+    if stroke < MIN_STROKE_MM:
+        raise SoftLimitError(
+            f"이동 거리가 {stroke:.2f}mm 뿐입니다. 두 지점이 같은 자리인지 "
+            "확인하세요. (취소하려면 cancel_calibration())"
+        )
+
+    STROKE_MM = stroke
+    _position_mm = stroke if net > 0 else 0.0
+    _calibrating = False
+    _calib_travel_mm = 0.0
+    _calibration = {
+        "calibrated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+    }
+    _save_calibration()
+    return calibration()
+
+
+def jog_mm(distance_mm, speed_mm_s=5.0):
+    """보정용 상대 이동. 절대 기준이 없어도 동작한다.
+
+    보정 중에는 소프트 리밋을 적용하지 않는다(스트로크를 아직 모른다).
+    대신 한 번에 MAX_JOG_MM, 누적 CALIB_MAX_TRAVEL_MM 로 제한한다.
+    보정 중이 아니면 그냥 move_mm() 과 같다.
+    """
+    global _calib_travel_mm
+
+    if abs(distance_mm) > MAX_JOG_MM:
+        raise SoftLimitError(
+            f"한 번에 {MAX_JOG_MM}mm 까지만 움직일 수 있습니다 "
+            f"(요청 {distance_mm}mm). 나눠서 보내세요."
+        )
+    if not _calibrating:
+        return move_mm(distance_mm, speed_mm_s=speed_mm_s)
+
+    if _calib_travel_mm + abs(distance_mm) > CALIB_MAX_TRAVEL_MM:
+        raise SoftLimitError(
+            f"보정 중 누적 이동이 {CALIB_MAX_TRAVEL_MM}mm 를 넘습니다. "
+            "끝단을 지나쳤을 수 있으니 확인하고 다시 시작하세요."
+        )
+
+    _move_raw(distance_mm, speed_mm_s)
+    _calib_travel_mm += abs(distance_mm)
+    return _position_mm
 
 
 def _send_pulses(steps, half_period_us):
@@ -99,15 +304,23 @@ def _send_pulses(steps, half_period_us):
         pi.wave_delete(wid)
 
 
-def move_mm(distance_mm, speed_mm_s=10.0):
-    """distance_mm: +는 정방향, -는 역방향 / speed_mm_s: 이동 속도"""
-    global _position_mm, _position_known
+def _step_distance(distance_mm):
+    """요청 거리를 실제로 나갈 펄스 수와 그에 해당하는 거리로 바꾼다.
 
-    if not _position_known:
-        raise SoftLimitError(
-            "현재 위치를 알 수 없음. 캐리지 위치를 눈으로 확인한 뒤 "
-            "set_position_mm()으로 알려주세요."
-        )
+    스텝은 정수라서 요청한 거리와 실제 이동 거리가 미세하게 다르다. 위치는
+    요청값이 아니라 이 값으로 누적해야 왕복 시 오차가 쌓이지 않는다.
+    """
+    steps = int(round(abs(distance_mm) * STEPS_PER_MM))
+    actual_mm = (steps / STEPS_PER_MM) * (1 if distance_mm > 0 else -1)
+    return steps, actual_mm
+
+
+def _move_raw(distance_mm, speed_mm_s):
+    """펄스를 실제로 내보낸다. 소프트 리밋과 위치 신뢰 여부는 보지 않는다.
+
+    보정 중에는 스트로크를 모르므로 리밋을 걸 수 없다. 검사는 호출자가 한다.
+    """
+    global _position_mm, _position_known
 
     if speed_mm_s > MAX_SPEED_MM_S:
         raise SoftLimitError(
@@ -115,18 +328,9 @@ def move_mm(distance_mm, speed_mm_s=10.0):
             "탈조로 위치를 잃습니다."
         )
 
-    steps = int(round(abs(distance_mm) * STEPS_PER_MM))
+    steps, actual_mm = _step_distance(distance_mm)
     if steps == 0:
-        return
-
-    # 스텝은 정수이므로 요청 거리가 아니라 실제로 나갈 펄스 수로 위치를 계산한다
-    actual_mm = (steps / STEPS_PER_MM) * (1 if distance_mm > 0 else -1)
-    target_mm = _position_mm + actual_mm
-    if not 0.0 <= target_mm <= STROKE_MM:
-        raise SoftLimitError(
-            f"이동 거부: {_position_mm:.2f}mm → {target_mm:.2f}mm "
-            f"(허용 0.00~{STROKE_MM:.2f}mm)"
-        )
+        return _position_mm
 
     forward = distance_mm > 0
     if INVERT_DIR:
@@ -146,8 +350,39 @@ def move_mm(distance_mm, speed_mm_s=10.0):
         _position_known = False
         raise
 
-    _position_mm = target_mm
+    _position_mm += actual_mm
     time.sleep(0.05)
+    return _position_mm
+
+
+def move_mm(distance_mm, speed_mm_s=10.0):
+    """distance_mm: +는 정방향, -는 역방향 / speed_mm_s: 이동 속도"""
+    if _calibrating:
+        raise SoftLimitError(
+            "보정 중입니다. jog_mm() 으로 움직이거나 보정을 끝내세요."
+        )
+
+    if not _position_known:
+        raise SoftLimitError(
+            "현재 위치를 알 수 없음. 캐리지 위치를 눈으로 확인한 뒤 "
+            "set_position_mm()으로 알려주세요. (건드리지 않았다면 resume_position())"
+        )
+
+    steps, actual_mm = _step_distance(distance_mm)
+    if steps == 0:
+        return _position_mm
+
+    target_mm = _position_mm + actual_mm
+    if not 0.0 <= target_mm <= STROKE_MM:
+        raise SoftLimitError(
+            f"이동 거부: {_position_mm:.2f}mm → {target_mm:.2f}mm "
+            f"(허용 0.00~{STROKE_MM:.2f}mm)"
+        )
+
+    _move_raw(distance_mm, speed_mm_s)
+    # 다음 부팅에서 이어 쓸 수 있도록 남긴다. 신뢰 여부는 그때 다시 묻는다.
+    _save_calibration()
+    return _position_mm
 
 
 def move_to_mm(target_mm, speed_mm_s=10.0):
@@ -156,10 +391,17 @@ def move_to_mm(target_mm, speed_mm_s=10.0):
 
 
 def cleanup():
+    if _position_known:
+        _save_calibration()
     pi.wave_tx_stop()
     pi.wave_clear()
     pi.write(PUL_PIN, 0)
     pi.stop()
+
+
+# 저장된 보정값이 있으면 STROKE_MM 과 마지막 위치를 여기서 되살린다.
+# 위치는 불러오기만 하고 신뢰하지는 않는다(_position_known 은 False 그대로).
+_load_calibration()
 
 
 if __name__ == "__main__":

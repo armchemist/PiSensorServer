@@ -316,6 +316,11 @@ class SetPositionRequest(BaseModel):
     mm: float = Field(description="현재 캐리지의 실제 위치(mm)")
 
 
+class JogRequest(BaseModel):
+    mm: float = Field(description="이동 거리(mm). +는 정방향, -는 역방향")
+    speed_mm_s: float = Field(default=5.0, gt=0, le=200)
+
+
 def _rail_call(fn, *args):
     """레일 호출의 예외를 HTTP 상태 코드로 옮긴다."""
     try:
@@ -352,4 +357,61 @@ def rail_move_to(req: MoveToRequest):
 def rail_set_position(req: SetPositionRequest):
     """이동이 중단돼 위치를 잃었을 때 실제 위치를 다시 알려준다."""
     pos = _rail_call(rail.set_position, req.mm)
+    return {"position_mm": pos}
+
+
+@app.post("/rail/resume")
+def rail_resume():
+    """저장된 위치를 그대로 이어 쓴다.
+
+    서버를 다시 띄우면 위치는 항상 '모름'으로 시작한다. 전원이 꺼진 사이
+    캐리지가 손으로 밀렸을 수 있기 때문이다. 건드리지 않았다면 이걸 부르고,
+    건드렸다면 /rail/set_position 으로 실제 위치를 알려준다.
+    """
+    return _rail_call(rail.resume_position)
+
+
+# ===== 보정 =====
+# 리미트 스위치가 없어서 원점을 기계적으로 찾을 수 없다. 사용자가 양 끝을
+# 직접 지정한다. 사용자가 요청할 때만 들어가는 별도 모드다.
+#
+#   1. POST /rail/calibration/begin   캐리지를 시작 지점에 두고 호출
+#   2. POST /rail/jog                 종료 지점까지 조금씩 이동 (반복)
+#   3. POST /rail/calibration/end     그 자리를 반대쪽 끝으로 확정, 저장
+#
+# 보정 중에는 소프트 리밋이 없다(스트로크를 아직 모른다). 대신 한 번에
+# 움직일 수 있는 거리가 제한되고, 일반 이동(/rail/move 등)은 거부된다.
+
+
+@app.get("/rail/calibration")
+def rail_calibration():
+    """보정 상태. UI가 보정 버튼을 띄울지 판단하는 데 쓴다."""
+    return _rail_call(rail.calibration)
+
+
+@app.post("/rail/calibration/begin")
+def rail_calibration_begin():
+    """지금 캐리지가 있는 자리를 시작 지점(기준 0)으로 잡는다."""
+    return _rail_call(rail.begin_calibration)
+
+
+@app.post("/rail/calibration/end")
+def rail_calibration_end():
+    """지금 자리를 반대쪽 끝으로 확정하고 스트로크를 저장한다."""
+    return _rail_call(rail.end_calibration)
+
+
+@app.post("/rail/calibration/cancel")
+def rail_calibration_cancel():
+    """보정을 버린다. 스트로크는 그대로 두고 위치만 '모름'이 된다."""
+    return _rail_call(rail.cancel_calibration)
+
+
+@app.post("/rail/jog")
+def rail_jog(req: JogRequest):
+    """상대 이동. 보정 중에는 절대 기준 없이도 움직인다.
+
+    보정 중이 아니면 /rail/move 와 같다(소프트 리밋 적용).
+    """
+    pos = _rail_call(rail.jog, req.mm, req.speed_mm_s)
     return {"position_mm": pos}

@@ -79,20 +79,69 @@ class Rail:
         finally:
             self._move_lock.release()
 
+    def jog(self, distance_mm, speed_mm_s):
+        """보정용 상대 이동. 보정 중이면 소프트 리밋 없이 움직인다."""
+        stage = self._load()
+        if not self._move_lock.acquire(blocking=False):
+            raise RailBusy("이미 이동 중입니다")
+        try:
+            stage.jog_mm(distance_mm, speed_mm_s=speed_mm_s)
+            return round(stage.position_mm(), 3)
+        finally:
+            self._move_lock.release()
+
     def set_position(self, value_mm):
         """캐리지를 손으로 옮겼을 때 현재 위치를 다시 알려준다."""
         stage = self._load()
         stage.set_position_mm(value_mm)
         return round(stage.position_mm(), 3)
 
+    def resume_position(self):
+        """저장된 위치를 그대로 이어 쓴다 — 캐리지를 건드리지 않았을 때."""
+        stage = self._load()
+        stage.resume_position()
+        return stage.calibration()
+
+    # --- 보정 ---
+    # 사용자가 명시적으로 요청할 때만 들어간다. 리미트 스위치가 없어서
+    # 양 끝을 사람이 직접 지정하는 방식이다.
+
+    def calibration(self):
+        return self._load().calibration()
+
+    def begin_calibration(self):
+        stage = self._load()
+        if not self._move_lock.acquire(blocking=False):
+            raise RailBusy("이동 중에는 보정을 시작할 수 없습니다")
+        try:
+            return stage.begin_calibration()
+        finally:
+            self._move_lock.release()
+
+    def end_calibration(self):
+        return self._load().end_calibration()
+
+    def cancel_calibration(self):
+        return self._load().cancel_calibration()
+
     def status(self):
         loaded = self._stage is not None
-        return {
+        status = {
             "available": loaded,
             "moving": self._move_lock.locked(),
             "error": self._error,
             "position_mm": round(self._stage.position_mm(), 3) if loaded else None,
         }
+        if loaded:
+            # 보정 여부와 위치 신뢰 여부는 /health 만 보고도 알 수 있어야 한다.
+            cal = self._stage.calibration()
+            status.update(
+                stroke_mm=cal["stroke_mm"],
+                calibrated=cal["calibrated"],
+                calibrating=cal["calibrating"],
+                position_known=cal["position_known"],
+            )
+        return status
 
     def close(self):
         if self._stage is not None:

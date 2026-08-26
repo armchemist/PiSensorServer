@@ -155,6 +155,12 @@ sudo systemctl start pi-sensor-server
 | `POST` | `/rail/move` | 상대 이동 `{"mm": 10, "speed_mm_s": 5}` |
 | `POST` | `/rail/move_to` | 절대 위치 이동 |
 | `POST` | `/rail/set_position` | 위치를 잃었을 때 실제 위치를 알려줌 |
+| `POST` | `/rail/resume` | 저장된 위치를 그대로 이어 씀 (캐리지를 건드리지 않았을 때) |
+| `POST` | `/rail/jog` | 상대 이동. 보정 중에는 절대 기준 없이 동작 |
+| `GET` | `/rail/calibration` | 보정 상태 (스트로크, 보정 여부, 위치 신뢰 여부) |
+| `POST` | `/rail/calibration/begin` | 지금 자리를 시작 지점으로 지정 |
+| `POST` | `/rail/calibration/end` | 지금 자리를 종료 지점으로 확정, 저장 |
+| `POST` | `/rail/calibration/cancel` | 보정 취소 |
 
 ### 상태 코드
 
@@ -180,6 +186,46 @@ http://pi.local:8000/thermal/ui?api_key=키
 `/thermal/ui` 는 한 번 이렇게 열어두면 키를 브라우저에 저장해서 다음부터는
 그냥 열어도 된다. **다만 쿼리스트링은 접근 로그와 브라우저 기록에 남는다.**
 외부에 노출한 환경이라면 Tailscale 내부망에서 보는 편이 낫다.
+
+## 레일 보정
+
+리미트스위치가 없어서 원점을 기계적으로 찾을 수 없다. **사용자가 양 끝을 직접
+지정**하고, 그 사이 거리를 유효 스트로크로 삼는다. 사용자가 요청할 때만 들어가는
+별도 모드다 — 서버가 알아서 시작하지 않는다.
+
+```bash
+# 1. 캐리지를 시작 지점에 두고
+curl -X POST http://lab-pi:8000/rail/calibration/begin
+
+# 2. 반대쪽 끝까지 조금씩 (미세조정은 0.5mm 씩)
+curl -X POST http://lab-pi:8000/rail/jog \
+     -H 'Content-Type: application/json' -d '{"mm": 10, "speed_mm_s": 5}'
+
+# 3. 그 자리를 끝으로 확정
+curl -X POST http://lab-pi:8000/rail/calibration/end
+```
+
+`end` 응답에 실측 스트로크가 들어 있고, `rail/calibration.json` 에 저장된다.
+서버를 껐다 켜도 유지된다.
+
+보정 중에는 소프트 리밋이 없는 대신 한 번에 20mm 까지만 움직일 수 있고,
+일반 이동(`/rail/move`, `/rail/move_to`)은 400 으로 거부된다.
+
+### 재시작 후에는 위치를 다시 확인한다
+
+스트로크는 그대로 신뢰하지만 **위치는 신뢰하지 않는다.** 전원이 꺼진 사이
+캐리지가 손으로 밀렸을 수 있기 때문이다. 첫 이동 전에 둘 중 하나를 부른다.
+
+```bash
+curl -X POST http://lab-pi:8000/rail/resume                  # 안 건드렸음
+curl -X POST http://lab-pi:8000/rail/set_position \
+     -H 'Content-Type: application/json' -d '{"mm": 120}'    # 건드렸음
+```
+
+확인 전에 이동을 시도하면 `400` 이 난다. `/health` 의 `rail.position_known` 으로
+지금 확인이 필요한 상태인지 알 수 있다.
+
+자세한 내용은 [`rail/README.md`](../rail/README.md) 참고.
 
 ## 열화상 카메라 (ThermoEye TMC160F)
 
@@ -359,6 +405,8 @@ export API_KEY='충분히 긴 무작위 문자열'
 현재 적용된 것:
 
 - 레일은 `STROKE_MM` 를 벗어나는 이동을 거부한다 (`rail/stage.py` 의 소프트 리밋)
+- 서버를 띄운 직후에는 캐리지 위치를 모르는 상태이므로 이동이 거부된다.
+  `/rail/resume` 또는 `/rail/set_position` 으로 확인해 줘야 움직인다
 - 이동이 중단돼 위치를 잃으면, 다시 알려주기 전까지 이동을 거부한다
 - 동시에 두 개의 이동 명령이 실행되지 않는다 (`409`)
 - 속도는 스키마에서 상한이 걸린다
