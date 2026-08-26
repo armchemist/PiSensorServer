@@ -47,9 +47,12 @@
     border-radius: 7px; padding: 7px 9px; font: inherit; width: 110px;
   }
   .hint { color: var(--dim); font-size: 12px; margin-top: 10px; }
-  .bar { height: 8px; background: #12141a; border-radius: 4px; position: relative; margin: 10px 0 4px; }
-  .bar i { position: absolute; top: -3px; width: 3px; height: 14px; background: var(--accent); border-radius: 2px; }
-  .bar s { position: absolute; top: -1px; width: 2px; height: 10px; background: var(--dim); }
+  input[type=range] {
+    width: 100%; accent-color: var(--accent); background: transparent;
+    padding: 0; margin: 6px 0 2px;
+  }
+  input[type=range]:disabled { opacity: .35; }
+  .est { color: var(--accent); }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
   td:nth-child(2) { color: var(--dim); text-align: right; width: 90px; }
@@ -116,8 +119,8 @@
   <!-- 이동 -->
   <div class="panel">
     <h2>이동</h2>
-    <div class="bar" id="bar"><i id="bar-pos"></i></div>
-    <div class="status" id="bar-label"></div>
+    <input type="range" id="i-pos" min="0" max="100" step="0.1" value="0" hidden>
+    <div class="status" id="pos-label"></div>
     <div class="row" style="margin-top:12px">
       <label>이동량 <input id="i-dist" type="number" step="0.1" min="0" value="10"> mm</label>
       <label>속도 <input id="i-speed" type="number" step="0.5" min="0.1" value="5"> mm/s</label>
@@ -198,12 +201,34 @@ function toast(msg, ok = false) {
 
 // 하드웨어를 건드리는 동안 버튼을 잠근다. 이동은 초 단위로 걸리고, 서버는
 // 동시 이동을 409 로 거부하므로 눌러봤자 에러만 난다.
-async function act(fn) {
+// 이동 중 위치 추정.
+// 서버는 이동이 끝날 때까지 응답하지 않는다(초 단위로 걸린다). 그동안 위치를
+// 물어볼 수 없으므로, 출발점·목표·속도로 계산해 그려 준다. 응답이 오면 실제
+// 값으로 덮인다. 추정 중에는 라벨에 ≈ 를 붙여 실측과 구분한다.
+let anim = null;
+
+function startAnim(to) {
+  if (!cal?.position_known || to === undefined || to === null) return;
+  const from = cal.position_mm;
+  const dur = Math.abs(to - from) / speed() * 1000;
+  if (!(dur > 0)) return;
+  anim = { from, to, t0: performance.now(), dur };
+  tick();
+}
+function tick() {
+  if (!anim) return;
+  const p = Math.min(1, (performance.now() - anim.t0) / anim.dur);
+  paintPos(anim.from + (anim.to - anim.from) * p, true);
+  if (p < 1) requestAnimationFrame(tick);
+}
+
+async function act(fn, to) {
   if (busy) return;
   busy = true; render();
-  try { await fn(); await refresh(); }
-  catch (e) { toast(e.message); await refresh(); }
-  finally { busy = false; render(); }
+  startAnim(to);
+  try { await fn(); }
+  catch (e) { toast(e.message); }
+  finally { anim = null; busy = false; await refresh(); }
 }
 
 async function refresh() {
@@ -227,13 +252,16 @@ function render() {
   $("cal-idle").hidden = calibrating;
   $("cal-active").hidden = !calibrating;
 
-  // 이동 막대 — 보정 중에는 스트로크가 의미 없으니 감춘다
-  const frac = known && !calibrating ? cal.position_mm / cal.stroke_mm : null;
-  $("bar").style.visibility = frac === null ? "hidden" : "visible";
-  if (frac !== null) $("bar-pos").style.left = `calc(${Math.min(1, Math.max(0, frac)) * 100}% - 1px)`;
-  $("bar-label").textContent = calibrating
-    ? `시작점에서 ${cal.position_mm.toFixed(2)}mm`
-    : known ? `0 ─ ${cal.stroke_mm.toFixed(1)}mm` : "";
+  // 슬라이더는 보정이 끝나고 위치를 아는 상태에서만 의미가 있다.
+  // 보정 중에는 스트로크를 몰라 눈금을 그릴 수 없다.
+  const usable = known && !calibrating && cal.calibrated;
+  const slider = $("i-pos");
+  slider.hidden = !usable;
+  if (usable) {
+    slider.max = cal.stroke_mm;
+    slider.disabled = busy;
+  }
+  paintPos(cal.position_mm, false);
 
   for (const b of document.querySelectorAll("[data-jog]")) b.disabled = busy || !known;
   $("b-fwd").disabled = $("b-back").disabled = busy || !known;
@@ -270,7 +298,9 @@ function render() {
     const go = document.createElement("button");
     go.textContent = "이동";
     go.disabled = busy || !known || calibrating || bad;
-    go.onclick = () => act(() => api("/rail/goto", "POST", { station: st.name, speed_mm_s: speed() }));
+    go.onclick = () => act(
+      () => api("/rail/goto", "POST", { station: st.name, speed_mm_s: speed() }),
+      st.position_mm);
     const del = document.createElement("button");
     del.textContent = "삭제"; del.className = "danger"; del.disabled = busy;
     del.onclick = () => act(() => api(`/rail/stations/${encodeURIComponent(st.name)}`, "DELETE"));
@@ -294,11 +324,43 @@ function dist() {
   if (Number.isNaN(v) || v <= 0) throw new Error("이동량을 입력하세요.");
   return v;
 }
-function jog(mm) { return act(() => api("/rail/jog", "POST", { mm, speed_mm_s: speed() })); }
+function jog(mm) {
+  const to = cal?.position_known ? cal.position_mm + mm : undefined;
+  return act(() => api("/rail/jog", "POST", { mm, speed_mm_s: speed() }), to);
+}
+
+function paintPos(mm, estimated) {
+  if (!cal) return;
+  const slider = $("i-pos"), label = $("pos-label");
+  if (cal.calibrating) {
+    label.textContent = `시작점에서 ${mm.toFixed(2)}mm`;
+    return;
+  }
+  if (!cal.position_known) { label.textContent = ""; return; }
+  // 드래그 중에는 사용자의 손을 이기지 않는다.
+  if (!slider.hidden && document.activeElement !== slider) {
+    slider.value = Math.min(cal.stroke_mm, Math.max(0, mm));
+  }
+  label.innerHTML = estimated
+    ? `<span class="est">≈ ${mm.toFixed(1)}</span> / ${cal.stroke_mm.toFixed(1)}mm  (이동 중)`
+    : `<b>${mm.toFixed(2)}</b> / ${cal.stroke_mm.toFixed(1)}mm`;
+}
 
 for (const b of document.querySelectorAll("[data-jog]")) {
   b.onclick = () => jog(+b.dataset.jog);
 }
+
+// 슬라이더: 끌 때는 목표만 보여주고, 손을 떼면 그 자리로 이동한다.
+$("i-pos").oninput = () => {
+  const v = parseFloat($("i-pos").value);
+  $("pos-label").innerHTML =
+    `<span class="est">→ ${v.toFixed(1)}</span> / ${cal.stroke_mm.toFixed(1)}mm  (놓으면 이동)`;
+};
+$("i-pos").onchange = () => {
+  const v = parseFloat($("i-pos").value);
+  $("i-pos").blur();
+  act(() => api("/rail/move_to", "POST", { mm: v, speed_mm_s: speed() }), v);
+};
 $("b-fwd").onclick = () => jog(dist());
 $("b-back").onclick = () => jog(-dist());
 
