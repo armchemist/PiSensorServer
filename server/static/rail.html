@@ -266,12 +266,12 @@ function render() {
   for (const b of document.querySelectorAll("[data-jog]")) b.disabled = busy || !known;
   $("b-fwd").disabled = $("b-back").disabled = busy || !known;
 
-  // 입력 상한은 서버가 알려준 값을 쓴다. 보정 중에만 1회 이동 거리가 제한된다.
-  const maxSpeed = cal.max_speed_mm_s, maxJog = cal.max_jog_mm;
+  // 입력 상한은 서버가 알려준 값을 쓴다.
+  const maxSpeed = cal.max_speed_mm_s;
   $("i-speed").max = maxSpeed;
-  $("i-dist").max = calibrating ? maxJog : (known ? cal.stroke_mm : "");
+  $("i-dist").max = calibrating ? "" : (known ? cal.stroke_mm : "");
   $("move-hint").textContent = calibrating
-    ? `보정 중에는 한 번에 ${maxJog}mm 까지. 속도 상한 ${maxSpeed}mm/s.`
+    ? `⚠️ 보정 중에는 끝단을 막아 주는 것이 없습니다. 속도 상한 ${maxSpeed}mm/s.`
     : `속도 상한 ${maxSpeed}mm/s. 이동은 0 ~ ${cal.stroke_mm.toFixed(1)}mm 범위로 제한됩니다.`;
   estimate();
   $("b-cal-begin").disabled = busy;

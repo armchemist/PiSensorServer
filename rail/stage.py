@@ -52,11 +52,21 @@ STROKE_MM         = 100.0          # 스테이지 유효 스트로크
 START_POSITION_MM = STROKE_MM / 2  # 전원 인가 시 캐리지를 중앙에 두고 시작한다고 가정
 
 # 모델별 매뉴얼 상한: 1605=50, 1610=100, 1620=200, 1204=40 (mm/s)
-# -1610 은 100mm/s 지만, lgpio 는 소프트웨어 타이밍이라 고속에서 펄스 간격이
-# 흔들린다. 100mm/s = 16kHz 는 위험하므로 실용 범위로 낮춰 잡았다.
-# 20mm/s = 3.2kHz. 더 빨라야 하면 pigpio 를 소스 빌드해 _send_pulses() 만
-# 갈아끼우면 된다.
-MAX_SPEED_MM_S = 20.0
+#
+# -1610 의 기계적 상한은 100mm/s 지만 그건 여기서 의미가 없다. 한계는 두 군데서
+# 걸리는데, 실측해 보니 병목은 예상과 달랐다.
+#
+#   lgpio 타이밍   16kHz(100mm/s)까지 오차 +1.4% 로 일정. 속도와 무관한 값이라
+#                  지터가 아니라 호출 오버헤드다. 병목이 아니다.
+#   모터 기동      ← 여기가 병목. 가감속이 없어 정지 상태에서 곧바로 목표
+#                  속도로 쏘기 때문에, 기동 주파수를 넘으면 첫 스텝부터 탈조한다.
+#
+# 실측(2026-08-26, +20/-20mm 왕복): 40mm/s 성공, 50mm/s 탈조.
+# 기동 주파수 한계는 부하·모터 온도·전압에 따라 움직이므로 경계에 붙이지 않고
+# 25% 여유를 뒀다. 탈조는 소프트웨어가 감지할 수 없어서, 조용히 위치만 어긋난다.
+#
+# 이 값을 넘어서려면 속도를 올릴 게 아니라 가감속 램프를 넣어야 한다.
+MAX_SPEED_MM_S = 30.0
 
 MAX_PULSE_HZ = 20000    # lgpio 소프트웨어 타이밍이 버티는 범위
 MIN_PULSE_HZ = 100
@@ -72,9 +82,14 @@ MAX_PULSE_CYCLES = 100000
 # 실측한 스트로크와 마지막 위치를 여기 저장한다. 서버를 껐다 켜도 남는다.
 CALIBRATION_PATH = Path(__file__).with_name("calibration.json")
 
-# 보정 중에는 소프트 리밋이 없다(스트로크를 아직 모르니까). 대신 한 번에
-# 움직일 수 있는 거리와 누적 거리를 제한해 폭주를 막는다.
-MAX_JOG_MM = 20.0
+# 보정 중에는 소프트 리밋이 없다(스트로크를 아직 모르니까).
+#
+# 한 번에 움직일 수 있는 거리도 제한했었지만 풀었다. 보정은 사람이 눈으로 보며
+# 하는 작업이고, 긴 스테이지(실측 540mm)를 20mm 씩 쪼개 훑는 것이 실제로는 더
+# 번거롭고 오래 걸린다. 누적 이동 감지만 남겨 폭주를 잡는다.
+#
+# ⚠️ 즉 보정 중 끝단 충돌을 막아 주는 것은 아무것도 없다. 리미트스위치를 달면
+#    이 구간 자체가 사라진다.
 CALIB_MAX_TRAVEL_MM = 2000.0
 MIN_STROKE_MM = 1.0     # 이보다 짧으면 실수로 본다
 # =========================================
@@ -187,7 +202,6 @@ def calibration():
         # UI 가 입력 상한을 서버에서 받아가도록 함께 내보낸다. 클라이언트에
         # 숫자를 박아 두면 여기를 고쳐도 따라오지 않는다.
         "max_speed_mm_s": MAX_SPEED_MM_S,
-        "max_jog_mm": MAX_JOG_MM,
         # 보정을 실제로 마친 적이 있는가. 파일만 있고 calibrated_at 이 없으면
         # 위치만 저장된 것이므로 스트로크는 여전히 기본값이다.
         "calibrated": bool(_calibration and _calibration.get("calibration_id")),
@@ -298,22 +312,14 @@ def jog_mm(distance_mm, speed_mm_s=5.0):
     """보정용 상대 이동. 절대 기준이 없어도 동작한다.
 
     보정 중에는 소프트 리밋을 적용하지 않는다(스트로크를 아직 모른다).
-    대신 한 번에 MAX_JOG_MM, 누적 CALIB_MAX_TRAVEL_MM 로 제한한다.
+    누적 이동만 CALIB_MAX_TRAVEL_MM 로 감시한다.
     보정 중이 아니면 그냥 move_mm() 과 같다.
     """
     global _calib_travel_mm
 
     if not _calibrating:
-        # 보정 중이 아니면 소프트 리밋이 끝단을 막는다. 거리를 따로 제한할 이유가 없다.
+        # 보정 중이 아니면 소프트 리밋이 끝단을 막는다.
         return move_mm(distance_mm, speed_mm_s=speed_mm_s)
-
-    # 보정 중에는 스트로크를 몰라 리밋을 걸 수 없다. 한 번에 크게 움직여
-    # 끝단에 박는 것만이라도 막는다.
-    if abs(distance_mm) > MAX_JOG_MM:
-        raise SoftLimitError(
-            f"보정 중에는 한 번에 {MAX_JOG_MM}mm 까지만 움직일 수 있습니다 "
-            f"(요청 {distance_mm}mm). 나눠서 보내세요."
-        )
 
     if _calib_travel_mm + abs(distance_mm) > CALIB_MAX_TRAVEL_MM:
         raise SoftLimitError(
