@@ -159,8 +159,9 @@ sudo systemctl start pi-sensor-server
 | `POST` | `/rail/resume` | 저장된 위치를 그대로 이어 씀 (캐리지를 건드리지 않았을 때) |
 | `POST` | `/rail/jog` | 상대 이동. 보정 중에는 절대 기준 없이 동작 |
 | `GET` | `/rail/calibration` | 보정 상태 (스트로크, 보정 여부, 위치 신뢰 여부) |
-| `POST` | `/rail/calibration/begin` | 지금 자리를 시작 지점으로 지정 |
-| `POST` | `/rail/calibration/end` | 지금 자리를 종료 지점으로 확정, 저장 |
+| `POST` | `/rail/calibration/begin` | 보정 모드 진입 |
+| `POST` | `/rail/calibration/mark` | 지금 자리를 시작점/끝점으로 지정 `{"point":"start"}` |
+| `POST` | `/rail/calibration/end` | 찍어 둔 두 점으로 확정, 저장 |
 | `POST` | `/rail/calibration/cancel` | 보정 취소 |
 | `GET` | `/rail/ui` | 보정·스테이션 등록 웹 UI (브라우저에서 열기) |
 | `GET` | `/rail/stations` | 스테이션 목록 |
@@ -203,16 +204,26 @@ http://pi.local:8000/thermal/ui?api_key=키
 별도 모드다 — 서버가 알아서 시작하지 않는다.
 
 ```bash
-# 1. 캐리지를 시작 지점에 두고
+# 1. 보정 모드 진입 — 이 뒤로 캐리지를 움직일 수 있다
 curl -X POST http://lab-pi:8000/rail/calibration/begin
 
-# 2. 반대쪽 끝까지 조금씩 (미세조정은 0.5mm 씩)
+# 2. 시작 지점까지 이동 후 지정
 curl -X POST http://lab-pi:8000/rail/jog \
      -H 'Content-Type: application/json' -d '{"mm": 10, "speed_mm_s": 5}'
+curl -X POST http://lab-pi:8000/rail/calibration/mark \
+     -H 'Content-Type: application/json' -d '{"point": "start"}'
 
-# 3. 그 자리를 끝으로 확정
+# 3. 끝 지점까지 이동 후 지정
+curl -X POST http://lab-pi:8000/rail/calibration/mark \
+     -H 'Content-Type: application/json' -d '{"point": "end"}'
+
+# 4. 확정
 curl -X POST http://lab-pi:8000/rail/calibration/end
 ```
+
+`begin` 은 시작점을 확정하지 않는다. **보정 전에는 위치를 몰라 이동이 거부되므로,
+원하는 시작 지점으로 옮기려면 먼저 이 모드에 들어와야 한다.** 두 점은 순서 상관없이
+찍을 수 있고 다시 찍으면 덮어쓴다.
 
 `end` 응답에 실측 스트로크가 들어 있고, `rail/calibration.json` 에 저장된다.
 서버를 껐다 켜도 유지된다.

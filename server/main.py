@@ -395,9 +395,15 @@ def rail_resume():
 # 리미트 스위치가 없어서 원점을 기계적으로 찾을 수 없다. 사용자가 양 끝을
 # 직접 지정한다. 사용자가 요청할 때만 들어가는 별도 모드다.
 #
-#   1. POST /rail/calibration/begin   캐리지를 시작 지점에 두고 호출
-#   2. POST /rail/jog                 종료 지점까지 조금씩 이동 (반복)
-#   3. POST /rail/calibration/end     그 자리를 반대쪽 끝으로 확정, 저장
+#   1. POST /rail/calibration/begin              보정 모드 진입 (이제 움직일 수 있다)
+#   2. POST /rail/jog                            시작 지점까지 이동
+#   3. POST /rail/calibration/mark {"start"}     여기가 시작점
+#   4. POST /rail/jog                            끝 지점까지 이동
+#   5. POST /rail/calibration/mark {"end"}       여기가 끝점
+#   6. POST /rail/calibration/end                확정, 저장
+#
+# begin 이 시작점을 확정하지 않는 이유: 보정 전에는 위치를 몰라 이동이 거부되므로,
+# 원하는 시작 지점으로 옮기려면 먼저 이 모드에 들어와야 한다.
 #
 # 보정 중에는 소프트 리밋이 없다(스트로크를 아직 모른다). 대신 한 번에
 # 움직일 수 있는 거리가 제한되고, 일반 이동(/rail/move 등)은 거부된다.
@@ -421,9 +427,23 @@ def rail_calibration_begin():
     return _rail_call(rail.begin_calibration)
 
 
+class MarkRequest(BaseModel):
+    point: str = Field(description="'start' 또는 'end'")
+
+
+@app.post("/rail/calibration/mark")
+def rail_calibration_mark(req: MarkRequest):
+    """지금 캐리지가 있는 자리를 시작점 또는 끝점으로 지정한다.
+
+    순서는 상관없고, 다시 찍으면 덮어쓴다. 어느 쪽을 먼저 찍었든 좌표가 낮은
+    쪽이 0 이 된다.
+    """
+    return _rail_call(rail.mark_calibration_point, req.point)
+
+
 @app.post("/rail/calibration/end")
 def rail_calibration_end():
-    """지금 자리를 반대쪽 끝으로 확정하고 스트로크를 저장한다."""
+    """찍어 둔 두 점으로 스트로크를 확정하고 저장한다."""
     return _rail_call(rail.end_calibration)
 
 

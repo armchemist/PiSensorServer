@@ -108,6 +108,8 @@ _position_known = False
 # 보정 모드 상태. 사용자가 begin_calibration() 을 부를 때만 켜진다.
 _calibrating = False
 _calib_travel_mm = 0.0      # 누적 이동 거리(폭주 감지용, 절대값 합)
+_calib_start_mm = None      # 보정 중 상대 좌표계에서의 시작점
+_calib_end_mm = None        # 같은 좌표계에서의 끝점
 _calibration = None         # 파일에서 읽은 보정 정보(없으면 None)
 
 
@@ -219,6 +221,9 @@ def calibration():
         "calibrated_at": _calibration.get("calibrated_at") if _calibration else None,
         "calibrating": _calibrating,
         "calibration_travel_mm": round(_calib_travel_mm, 3) if _calibrating else None,
+        # 보정 중 상대 좌표. 아직 안 찍었으면 None. UI 가 이걸 보고 버튼을 켠다.
+        "calib_start_mm": _calib_start_mm,
+        "calib_end_mm": _calib_end_mm,
         "position_mm": round(_position_mm, 3),
         "position_known": _position_known,
     }
@@ -264,52 +269,92 @@ def resume_position():
 
 
 def begin_calibration():
-    """보정 모드 시작. 지금 캐리지가 있는 자리를 기준점(0)으로 잡는다."""
+    """보정 모드 시작.
+
+    지금 자리를 **임시 기준(0)** 으로 삼을 뿐, 시작점으로 확정하지 않는다.
+    보정 전에는 위치를 몰라 이동이 거부되므로, 원하는 시작 지점으로 옮기려면
+    먼저 이 모드에 들어와야 한다. 자유롭게 움직인 뒤 mark_calibration_point()
+    로 시작·끝을 각각 찍는다.
+    """
     global _calibrating, _calib_travel_mm, _position_mm, _position_known
+    global _calib_start_mm, _calib_end_mm
     if _calibrating:
         raise SoftLimitError("이미 보정 중입니다.")
     _calibrating = True
     _calib_travel_mm = 0.0
     _position_mm = 0.0
     _position_known = True   # 보정 안에서만 통하는 상대 기준
+    _calib_start_mm = None
+    _calib_end_mm = None
+    return calibration()
+
+
+def mark_calibration_point(point):
+    """지금 자리를 시작점 또는 끝점으로 찍는다. 다시 찍으면 덮어쓴다."""
+    global _calib_start_mm, _calib_end_mm
+    if not _calibrating:
+        raise SoftLimitError("보정 중이 아닙니다. begin_calibration() 부터 부르세요.")
+    if point == "start":
+        _calib_start_mm = round(_position_mm, 4)
+    elif point == "end":
+        _calib_end_mm = round(_position_mm, 4)
+    else:
+        raise SoftLimitError(f"point 는 'start' 또는 'end' 여야 합니다 (받은 값: {point!r})")
     return calibration()
 
 
 def cancel_calibration():
     """보정을 버린다. 위치는 다시 '모름'이 된다."""
     global _calibrating, _calib_travel_mm, _position_known
+    global _calib_start_mm, _calib_end_mm
     if not _calibrating:
         raise SoftLimitError("보정 중이 아닙니다.")
     _calibrating = False
     _calib_travel_mm = 0.0
+    _calib_start_mm = None
+    _calib_end_mm = None
     _position_known = False
     return calibration()
 
 
 def end_calibration():
-    """지금 자리를 반대쪽 끝으로 확정하고 스트로크를 저장한다.
+    """찍어 둔 시작·끝으로 스트로크를 확정하고 저장한다.
 
-    시작점에서의 순수 변위가 스트로크가 된다. 뒤로 갔다면(변위가 음수) 지금
-    자리가 더 낮은 쪽이므로 그쪽을 0 으로 삼는다. 즉 0 은 항상 두 지점 중
-    좌표가 낮은 쪽이고, mm 는 정방향으로 증가한다.
+    두 점 사이 거리가 스트로크다. 어느 쪽을 먼저 찍었든 **좌표가 낮은 쪽이
+    0** 이 되고 mm 는 정방향으로 증가한다. 캐리지가 어느 방향에서 접근했는지에
+    따라 좌표계가 뒤집히면 스테이션 좌표를 매번 다시 잡아야 한다.
     """
     global STROKE_MM, _calibrating, _calib_travel_mm, _position_mm, _calibration
+    global _calib_start_mm, _calib_end_mm
 
     if not _calibrating:
         raise SoftLimitError("보정 중이 아닙니다. begin_calibration() 부터 부르세요.")
+    missing = [n for n, v in (("시작점", _calib_start_mm), ("끝점", _calib_end_mm))
+               if v is None]
+    if missing:
+        raise SoftLimitError(
+            f"{' 과 '.join(missing)}을 아직 지정하지 않았습니다. "
+            "캐리지를 그 자리로 옮기고 각각 지정하세요."
+        )
 
-    net = _position_mm
-    stroke = abs(net)
+    lo, hi = sorted((_calib_start_mm, _calib_end_mm))
+    stroke = hi - lo
     if stroke < MIN_STROKE_MM:
         raise SoftLimitError(
-            f"이동 거리가 {stroke:.2f}mm 뿐입니다. 두 지점이 같은 자리인지 "
+            f"두 지점 사이가 {stroke:.2f}mm 뿐입니다. 같은 자리를 두 번 찍었는지 "
             "확인하세요. (취소하려면 cancel_calibration())"
         )
 
     STROKE_MM = stroke
-    _position_mm = stroke if net > 0 else 0.0
+    # 지금 캐리지가 있는 자리를 새 좌표계로 옮긴다. 두 점 사이를 벗어나 있으면
+    # 음수이거나 스트로크보다 클 수 있다. 그대로 둔다 — 클램프하면 실제와 다른
+    # 값을 사실처럼 보여주게 된다. 소프트 리밋이 범위 안으로 돌아오는 이동만
+    # 허용하므로 스스로 복구된다.
+    _position_mm = round(_position_mm - lo, 4)
     _calibrating = False
     _calib_travel_mm = 0.0
+    _calib_start_mm = None
+    _calib_end_mm = None
     _calibration = {
         "calibrated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "calibration_id": uuid.uuid4().hex,

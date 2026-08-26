@@ -130,6 +130,10 @@ class Rail:
         finally:
             self._move_lock.release()
 
+    def mark_calibration_point(self, point):
+        """지금 자리를 시작점 또는 끝점으로 찍는다."""
+        return self._load().mark_calibration_point(point)
+
     def end_calibration(self):
         return self._load().end_calibration()
 

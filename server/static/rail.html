@@ -111,12 +111,22 @@
     </div>
     <div id="cal-active" hidden>
       <p class="hint" style="margin-top:0">
-        시작 지점을 <b>0</b>으로 잡았습니다. 반대쪽 끝까지 옮기고 확정하세요.
-        보정 중에는 소프트 리밋이 없으니 <b>끝단에 닿지 않게</b> 주의하세요.
+        아래 <b>이동</b>으로 캐리지를 옮기며 양 끝을 각각 지정하세요. 순서는
+        상관없고 다시 눌러 덮어쓸 수 있습니다.
+        <b>보정 중에는 끝단을 막아 주는 것이 없습니다.</b>
       </p>
       <div class="row">
-        <button class="primary" id="b-cal-end">여기를 반대쪽 끝으로 확정</button>
+        <button id="b-mark-start">여기가 시작점</button>
+        <span class="status" id="mark-start-v">미지정</span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="b-mark-end">여기가 끝점</button>
+        <span class="status" id="mark-end-v">미지정</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="b-cal-end">보정 완료</button>
         <button class="danger" id="b-cal-cancel">취소</button>
+        <span class="hint" id="cal-span"></span>
       </div>
     </div>
   </div>
@@ -283,8 +293,18 @@ function render() {
     : `속도 상한 ${maxSpeed}mm/s. 이동은 0 ~ ${cal.stroke_mm.toFixed(1)}mm 범위로 제한됩니다.`;
   estimate();
   $("b-cal-begin").disabled = busy;
-  $("b-cal-end").disabled = busy;
   $("b-cal-cancel").disabled = busy;
+  $("b-mark-start").disabled = $("b-mark-end").disabled = busy || !calibrating;
+
+  const ms = cal.calib_start_mm, me = cal.calib_end_mm;
+  const fmt = (v) => (v === null || v === undefined ? "미지정" : `${v.toFixed(2)}mm`);
+  $("mark-start-v").textContent = fmt(ms);
+  $("mark-end-v").textContent = fmt(me);
+  const both = ms !== null && ms !== undefined && me !== null && me !== undefined;
+  $("b-cal-end").disabled = busy || !both;
+  $("cal-span").textContent = both
+    ? `스트로크 ${Math.abs(me - ms).toFixed(2)}mm 로 확정됩니다`
+    : "두 점을 모두 지정해야 완료할 수 있습니다";
   $("b-teach").disabled = busy || !known || calibrating;
 
   const stale = sts && sts.stale && sts.stations.length > 0;
@@ -400,6 +420,10 @@ $("b-setpos").onclick = () => act(async () => {
   await api("/rail/set_position", "POST", { mm: v });
 });
 $("b-cal-begin").onclick = () => act(() => api("/rail/calibration/begin", "POST"));
+$("b-mark-start").onclick = () =>
+  act(() => api("/rail/calibration/mark", "POST", { point: "start" }));
+$("b-mark-end").onclick = () =>
+  act(() => api("/rail/calibration/mark", "POST", { point: "end" }));
 $("b-cal-cancel").onclick = () => act(() => api("/rail/calibration/cancel", "POST"));
 $("b-cal-end").onclick = () => act(async () => {
   const r = await api("/rail/calibration/end", "POST");
