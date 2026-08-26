@@ -184,6 +184,10 @@ def calibration():
     return {
         "stroke_mm": STROKE_MM,
         "steps_per_mm": STEPS_PER_MM,
+        # UI 가 입력 상한을 서버에서 받아가도록 함께 내보낸다. 클라이언트에
+        # 숫자를 박아 두면 여기를 고쳐도 따라오지 않는다.
+        "max_speed_mm_s": MAX_SPEED_MM_S,
+        "max_jog_mm": MAX_JOG_MM,
         # 보정을 실제로 마친 적이 있는가. 파일만 있고 calibrated_at 이 없으면
         # 위치만 저장된 것이므로 스트로크는 여전히 기본값이다.
         "calibrated": bool(_calibration and _calibration.get("calibration_id")),
@@ -299,13 +303,17 @@ def jog_mm(distance_mm, speed_mm_s=5.0):
     """
     global _calib_travel_mm
 
+    if not _calibrating:
+        # 보정 중이 아니면 소프트 리밋이 끝단을 막는다. 거리를 따로 제한할 이유가 없다.
+        return move_mm(distance_mm, speed_mm_s=speed_mm_s)
+
+    # 보정 중에는 스트로크를 몰라 리밋을 걸 수 없다. 한 번에 크게 움직여
+    # 끝단에 박는 것만이라도 막는다.
     if abs(distance_mm) > MAX_JOG_MM:
         raise SoftLimitError(
-            f"한 번에 {MAX_JOG_MM}mm 까지만 움직일 수 있습니다 "
+            f"보정 중에는 한 번에 {MAX_JOG_MM}mm 까지만 움직일 수 있습니다 "
             f"(요청 {distance_mm}mm). 나눠서 보내세요."
         )
-    if not _calibrating:
-        return move_mm(distance_mm, speed_mm_s=speed_mm_s)
 
     if _calib_travel_mm + abs(distance_mm) > CALIB_MAX_TRAVEL_MM:
         raise SoftLimitError(
