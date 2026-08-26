@@ -42,7 +42,9 @@ try:
         time.sleep(0.001)
     print(f"완료 ({expected:.2f}s 예상)")
 finally:
-    lgpio.tx_pulse(h, PUL, 0, 0)            # 남은 전송 취소
+    # tx_pulse(0, 0) 은 문서와 달리 거부된다. 라인을 놓으면 전송도 정리된다.
+    lgpio.gpio_free(h, PUL)
+    lgpio.gpio_claim_output(h, PUL, 0)
     lgpio.gpio_write(h, PUL, 0)
     if ENA is not None:
         lgpio.gpio_write(h, ENA, 1)         # 모터 여자 해제

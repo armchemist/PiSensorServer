@@ -319,12 +319,21 @@ def jog_mm(distance_mm, speed_mm_s=5.0):
 
 
 def _stop_pulses():
-    """진행 중인 펄스를 즉시 끊고 큐를 비운다.
+    """진행 중인 펄스를 즉시 끊는다.
 
-    tx_pulse 에 on/off 를 둘 다 0 으로 주면 그 GPIO 의 전송이 취소된다.
+    문서에는 tx_pulse(on=0, off=0) 으로 취소한다고 되어 있지만 lgpio 0.2.0.0
+    에서는 'bad PWM micros' 로 거부된다(tx_pwm(0, 0) 도 마찬가지). 라인을
+    놓으면 전송도 함께 정리되므로 놓았다 다시 잡는다. 실측으로 확인했다 —
+    10초짜리 전송 중 gpio_free 를 부르면 tx_busy 가 즉시 0 이 된다.
+
+    예외 처리 경로에서도 불리므로 여기서 다시 예외를 내지 않는다.
     """
     try:
-        lgpio.tx_pulse(_chip, PUL_PIN, 0, 0)
+        lgpio.gpio_free(_chip, PUL_PIN)
+    except Exception:
+        pass
+    try:
+        lgpio.gpio_claim_output(_chip, PUL_PIN, 0)
     except Exception:
         pass
 
