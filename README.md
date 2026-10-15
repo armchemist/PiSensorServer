@@ -3,6 +3,121 @@
 실험실 장비 중 **고정된 것들**을 맡는 라즈베리파이(파이2)의 코드.
 열화상 카메라, 수질 센서(pH/전도도), 리니어 스테이지(레일)를 HTTP API로 노출한다.
 
+## 중앙 서버 (데스크톱) — POC
+
+이제 데스크톱 PC 의 중앙 서버(`central/`, 포트 8100)가 중심이다. 파이2는 1초마다 센서·레일
+상태를 중앙에 보고하고, 레일 명령을 폴링해 실행한다. 스마트폰(휴머노이드 머리)은 WebSocket 으로 붙는다.
+통신 규약 전체는 [`docs/PROTOCOL.md`](docs/PROTOCOL.md). 아래 "두 개의 파이" 절의
+"클라우드 에이전트가 양쪽을 직접 호출" 구조는 이것으로 대체된다.
+
+```
+        데스크톱 중앙 서버 :8100  (central/, Windows 가능, DB 없음 — data/*.json[l])
+          ▲        ▲          ▲
+   보고·폴링 │   정지 │ WS        │ REST
+          │        ▼          │
+     파이2 :8000 (server/)   스마트폰 앱      운영자 / 향후 웹
+```
+
+### 실행 (데스크톱, Windows)
+
+```powershell
+cd PiSensorServer
+py -3.12 -m venv .venv            # 또는 uv venv -p 3.11 .venv
+.venv\Scripts\python -m pip install -r requirements-central.txt
+.venv\Scripts\python -m uvicorn central.main:app --host 0.0.0.0 --port 8100
+```
+
+**워커는 하나만** (`--workers` 를 주지 말 것). 명령 상태가 프로세스 메모리 + 파일 Lock 에 있다.
+`http://localhost:8100/docs` 의 Swagger UI 로 모든 API 를 눌러볼 수 있다. Windows 에서는 이게 제일 편하다
+(PowerShell 5.1 은 한글 응답이 깨져 보이고, git-bash 의 `curl -d '한글'` 은 본문이 깨진다).
+
+| 환경변수 (중앙) | 기본값 | |
+| --- | --- | --- |
+| `API_KEY` | (없음) | 설정 시 `X-API-Key` / `?api_key=` 필요. LAN 밖으로 열면 반드시 설정 |
+| `PI_URL` | 마지막 보고 IP:8000 | `/rail/stop` 을 전달할 파이 주소. 예: `http://100.64.0.20:8000` |
+| `PI_API_KEY` | (없음) | 파이 서버의 `API_KEY` |
+| `ARM_SAFE_TTL_S` | `30` | 팔 안전 확인 유효 시간(초) |
+| `DATA_DIR` | `./data` | 센서 이력·명령 기록 |
+
+PowerShell 에서 환경변수: `$env:API_KEY = "..."` 후 같은 창에서 실행.
+
+### 네트워크: LAN IP / Tailscale / 방화벽
+
+```powershell
+ipconfig                      # LAN IPv4 (예: 192.168.0.10)
+tailscale ip -4               # Tailscale IP (100.x.y.z)
+```
+
+- Windows 방화벽은 처음 실행 시 python 허용 창을 띄운다. **개인 네트워크** 를 허용할 것. 놓쳤다면 관리자 PowerShell:
+  `New-NetFirewallRule -DisplayName "ARMchemist 8100" -Direction Inbound -Protocol TCP -LocalPort 8100 -Action Allow -Profile Private`
+  (네트워크가 '공용'으로 잡혀 있으면 `-Profile Any` 이거나 네트워크를 개인으로 바꾼다.)
+- 확인은 **다른 장치에서** 한다: 파이에서 `curl http://<데스크톱IP>:8100/health`,
+  폰 브라우저에서 같은 주소. 데스크톱 자신에서 되는 것은 방화벽 확인이 아니다.
+- Tailscale: 양쪽 다 `tailscale status` 에 보이는지, `tailscale ping <상대>` 가 되는지. 그 다음 100.x 주소로 `/health`.
+- 데스크톱 IP 가 바뀌면 파이의 `CENTRAL_URL` 도 바꿔야 한다. Tailscale IP 는 고정이라 그쪽이 편하다.
+
+### 파이2 연결
+
+파이의 `.env` (systemd 유닛이 읽는다)에 추가하고 서비스를 재시작한다.
+
+```bash
+CENTRAL_URL=http://100.64.0.10:8100     # 데스크톱의 Tailscale 또는 LAN IP
+# CENTRAL_API_KEY=중앙의 API_KEY
+sudo systemctl restart pi-sensor-server
+journalctl -u pi-sensor-server -f       # "[uplink] ... 보고 시작" 이 보이면 연결
+```
+
+`CENTRAL_URL` 이 없으면 기존처럼 단독으로 돈다. 보고·폴링은 기존 서버 프로세스 안의 스레드라 시리얼·GPIO 를 따로 열지 않는다.
+
+### 레일 이동 절차 (POC)
+
+1. 레일 보정·스테이션 등록은 기존대로 파이의 `/rail/ui` 에서. 재시작 후엔 `/rail/resume` 또는 `/rail/set_position`.
+2. **로봇팔이 레일 이동에 안전한 자세인지 눈으로 확인**하고 `POST /arm/state {"safe": true}`. 30초, 이동 1회만 유효.
+3. 30초 안에 `POST /rail/command {"station": "실험존", "speed_mm_s": 5}`.
+4. `GET /status` 의 `rail_commands.pi2.status` 가 `DONE` 이 될 때까지 본다.
+5. 멈추려면 `POST /rail/stop`. 결과가 `UNKNOWN` 이면 레일을 눈으로 보고 PROTOCOL.md 3.2 절대로 해제.
+
+> ⚠️ **물리 비상정지 스위치(모터 전원 차단)를 반드시 따로 둘 것.** `/rail/stop` 은 네트워크·서버·파이가 모두
+> 살아 있을 때만 동작하는 소프트웨어 정지다.
+
+### Mock 으로 확인 (하드웨어 없이)
+
+```bash
+# 리눅스/파이/맥. Windows 는 한글 본문을 파일로: curl --data-binary @body.json
+S=http://<데스크톱IP>:8100
+curl -X POST $S/devices/pi2/report -H 'Content-Type: application/json' \
+  -d '{"ts":1760500000,"sensors":{"status":"ok","ph":7.02,"conductivity":612.4,"age_s":0.3},"rail":{"available":false,"moving":false}}'
+curl $S/status
+curl -X POST $S/arm/state -H 'Content-Type: application/json' -d '{"safe":true}'
+curl -X POST $S/rail/command -H 'Content-Type: application/json' -d '{"station":"실험존","speed_mm_s":5}'
+curl "$S/rail/command?device_id=pi2"                       # 파이 흉내: PENDING 조회
+curl -X POST $S/rail/command/<id>/result -H 'Content-Type: application/json' -d '{"status":"RUNNING"}'
+curl -X POST $S/rail/command/<id>/result -H 'Content-Type: application/json' -d '{"status":"DONE"}'
+```
+
+스마트폰 앱 대신 `tools/fake_phone.py` 로 WebSocket 을 확인한다.
+
+```powershell
+.venv\Scripts\python tools\fake_phone.py ws://127.0.0.1:8100 --jpeg 아무사진.jpg
+# 다른 창에서 (또는 Swagger UI 에서)
+# PowerShell 5.1 은 따옴표를 벗기므로 작은따옴표 안에 \" 를 쓴다
+curl.exe -X POST http://127.0.0.1:8100/phone/phone1/expression -H "Content-Type: application/json" -d '{\"value\":\"danger\"}'
+curl.exe -X POST http://127.0.0.1:8100/phone/phone1/track -H "Content-Type: application/json" -d '{\"action\":\"start\",\"target\":\"face\"}'
+curl.exe -o frame.jpg http://127.0.0.1:8100/phone/phone1/frame
+```
+
+fake_phone 창에 `받음: {'type': 'expression', ...}` 이 찍히고, track start 후 `/status` 의 `phones.phone1.last_track` 이 채워진다.
+
+### 테스트
+
+```powershell
+.venv\Scripts\python -m pip install pytest httpx
+.venv\Scripts\python -m pytest -q tests
+```
+
+상태 전이, 중복 실행 방지, 재시작 복구, 응답 유실·결과 재전송, 폰 WS·JPEG 를 검증한다. 파이 쪽 `server/uplink.py` 는
+가짜 레일로 실제 uvicorn 중앙 서버와 HTTP 로 통신시켜 검증한다. **실제 GPIO·모터·아두이노 동작은 검증 범위 밖이다.**
+
 ## 두 개의 파이
 
 실험대는 파이 두 대로 나뉜다. 기준은 *센서/구동* 이 아니라 **움직이는 것 /
