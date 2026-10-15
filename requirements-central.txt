@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+
+# 테스트용 (중앙 서버 실행에는 불필요)
+# pytest
+# httpx
