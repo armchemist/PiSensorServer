@@ -581,7 +581,7 @@ def rail_where():
         return {"position_known": False, "station": None, "nearest": None}
 
     pos = cal["position_mm"]
-    listed = stations.list(cal["stroke_mm"], cal["calibrated_at"])["stations"]
+    listed = stations.list(cal["stroke_mm"], cal["calibration_id"])["stations"]
     if not listed:
         return {"position_known": True, "position_mm": pos, "station": None, "nearest": None}
 
