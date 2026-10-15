@@ -530,6 +530,11 @@ export API_KEY='충분히 긴 무작위 문자열'
 | `THERMAL_SAMPLE_INTERVAL_S` | `1.0` | ROI 시계열 샘플 간격(초) |
 | `THERMAL_SERIES_MAX` | `86400` | ROI 하나당 최대 샘플 수 |
 | `API_KEY` | (없음) | 설정 시 인증 필수 |
+| `CENTRAL_URL` | (없음) | 중앙 서버 주소. 비우면 단독 운용 ([`docs/PROTOCOL.md`](../docs/PROTOCOL.md)) |
+| `CENTRAL_API_KEY` | (없음) | 중앙 서버의 `API_KEY` |
+| `DEVICE_ID` | `pi2` | 중앙 서버에 보고할 이름 |
+| `REPORT_INTERVAL_S` | `1.0` | 상태 보고 간격(초) |
+| `POLL_INTERVAL_S` | `1.0` | 레일 명령 폴링 간격(초) |
 
 ⚠️ 이 파이에는 다른 카메라가 없어서 `/dev/video0` 이 보통 그대로 맞는다. 다만
 V4L2 장치를 하나라도 더 꽂으면 번호가 밀리므로 그때는 `THERMAL_DEVICE` 를 명시해야

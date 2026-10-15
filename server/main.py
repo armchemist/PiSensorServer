@@ -28,7 +28,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import config
+from . import config, uplink
 from .hardware import thermal_render
 from .hardware.rail import RailBusy, rail
 from .hardware.sensors import reader as sensor_reader
@@ -50,7 +50,10 @@ async def lifespan(app: FastAPI):
     sensor_reader.start()
     # 열화상은 시계열을 놓치면 안 되므로 요청과 무관하게 계속 읽는다.
     thermal.start()
+    # CENTRAL_URL 이 있을 때만 중앙 서버로 보고·명령 폴링을 시작한다.
+    uplink.start()
     yield
+    uplink.stop()
     sensor_reader.stop()
     thermal.close()
     rail.close()
