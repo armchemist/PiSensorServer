@@ -1,9 +1,15 @@
-# PiSensorServer
+# PiSensorServer — 중앙 서버 (노트북/데스크톱)
 
-실험실 장비 중 **고정된 것들**을 맡는 라즈베리파이(파이2)의 코드.
-열화상 카메라, 수질 센서(pH/전도도), 리니어 스테이지(레일)를 HTTP API로 노출한다.
+> **이 저장소의 중앙 서버(`central/`, `start_server.bat`)는 라즈베리파이가 아니라 노트북/데스크톱 PC 에서 돌린다.**
+> 이름에 "Pi" 가 붙어 있지만 파이에 올리는 서버가 아니다.
+> 로봇팔 쪽 파이(파이1) 서버는 [PiRobotControl](https://github.com/armchemist/PiRobotControl) 저장소다.
+>
+> 파이2(센서·레일) 쪽 코드(`server/`, `sensors/`, `rail/`)는 역사적 이유로 아직 이 저장소에 같이 있다.
+> 파이2에서 돌리는 것은 그쪽(`python -m server.run`)뿐이고, `central/` 은 파이에서 실행하지 않는다.
 
-## 중앙 서버 (데스크톱) — POC
+열화상 카메라, 수질 센서(pH/전도도), 리니어 스테이지(레일)는 파이2가 맡고(`server/`), 파이2는 중앙 서버에 보고한다.
+
+## 중앙 서버 (노트북/데스크톱) — POC
 
 이제 데스크톱 PC 의 중앙 서버(`central/`, 포트 8100)가 중심이다. 파이2는 1초마다 센서·레일
 상태를 중앙에 보고하고, 레일 명령을 폴링해 실행한다. 스마트폰(휴머노이드 머리)은 WebSocket 으로 붙는다.
@@ -241,7 +247,7 @@ WiFi는 SD카드의 `network-config` 에 여러 개를 등록해 둬서, 부팅 
 ⚠️ 파이 두 대를 같이 쓰면 **mDNS 이름이 각각 필요하다.** 둘 다 `pi.local` 이면
 충돌한다. `pi1.local` / `pi2.local` 처럼 hostname 을 나눠 둘 것.
 
-## 서버 실행
+## 파이2 서버 실행 (라즈베리파이에서만)
 
 ```bash
 cd ~/PiSensorServer
@@ -249,3 +255,4 @@ cd ~/PiSensorServer
 ```
 
 설치와 운용은 [`server/README.md`](server/README.md) 참고.
+중앙 서버(`central/`)는 여기서가 아니라 노트북/데스크톱에서 `start_server.bat`(Windows) 또는 `./run_central.sh`(리눅스)로 띄운다.
