@@ -104,6 +104,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(cm, "store", Store(tmp_path))
     cm.phones.clear()
     cm.frames.clear()
+    cm.head_state.clear()
     with TestClient(cm.app) as c:
         yield c
 

@@ -11,8 +11,13 @@
   .big { font-size: 1.6em; font-weight: 600; }
   .off { color: #b00; } .on { color: #080; }
   table { border-collapse: collapse; } td { padding: .15em .8em .15em 0; }
-  #msg { white-space: pre-wrap; color: #555; font-size: .9em; }
+  #msg, #vmsg, #hmsg { white-space: pre-wrap; color: #555; font-size: .9em; }
   button { margin: .2em .3em .2em 0; }
+  #cam { width: 100%; max-height: 360px; object-fit: contain; background: #111; display: block; border-radius: 4px; }
+  .pill { display: inline-block; padding: .1em .6em; border-radius: 1em; font-weight: 600; background: #eee; }
+  .MATCH { background: #cfead0; color: #060; } .MISMATCH { background: #f9d0d0; color: #900; }
+  .NOT_DETECTED, .AMBIGUOUS, .STALE { background: #fde9c4; color: #7a4b00; } .CONFIRMING { background: #d6e6fb; color: #004a9f; }
+  .states button { min-width: 6em; }
 </style>
 </head>
 <body>
@@ -47,6 +52,51 @@
   <div id="msg"></div>
 </section>
 
+<section>
+  <h2>휴머노이드 카메라 <span id="phone-conn"></span></h2>
+  <img id="cam" alt="스마트폰 전면 카메라 (영상 전송을 켜면 보임)">
+  <table>
+    <tr><td>영상</td><td id="video"></td></tr>
+    <tr><td>검출 마커</td><td id="ids">-</td></tr>
+  </table>
+  <p>
+    <button id="vstart">영상 전송 시작</button>
+    <button id="vstop">영상 전송 정지</button>
+    <label><input type="checkbox" id="annot" checked> 검출 박스 표시</label>
+  </p>
+</section>
+
+<section>
+  <h2>ArUco 시약 확인 <span id="vlive"></span></h2>
+  <p>
+    목표 시약 <select id="target"></select>
+    <button id="vgo">검증 시작</button>
+    <button id="vend">검증 종료</button>
+    <a id="marker-link" href="#" target="_blank">테스트 마커 보기</a>
+  </p>
+  <table>
+    <tr><td>진행</td><td id="vprog">-</td></tr>
+    <tr><td>마지막 결과</td><td id="vresult">-</td></tr>
+  </table>
+  <p style="font-size:.85em;color:#666">ArUco ID 일치 = <b>시약 일치 확인</b>이다. 파지 성공 여부는 판단하지 않는다.
+    마커(<span id="mm">20</span>mm)가 영상에서 25px 이상 보여야 안정적으로 읽힌다 — 위 영상의 px 표시로 확인.</p>
+  <div id="vmsg"></div>
+</section>
+
+<section>
+  <h2>휴머노이드 상태 <span id="head-now"></span></h2>
+  <p class="states">
+    <button data-state="idle">IDLE</button><button data-state="thinking">THINKING</button>
+    <button data-state="working">WORKING</button><button data-state="done">DONE</button>
+    <button data-state="danger">DANGER</button><button data-state="error">ERROR</button>
+  </p>
+  <p>
+    문구 <input id="hmessage" placeholder="비우면 앱 기본 문구" style="width: 60%">
+    <button id="hsend">문구만 보내기 (상태 유지)</button>
+  </p>
+  <div id="hmsg"></div>
+</section>
+
 <script>
 const $ = id => document.getElementById(id);
 
@@ -75,6 +125,7 @@ async function tick() {
   let s;
   try { s = await api("GET", "/status"); $("conn").textContent = ""; }
   catch (e) { $("conn").textContent = "⚠ " + e.message; return; }
+  tickPhone(s);
   const d = s.devices.pi2;
   if (!d) { $("online").textContent = "(보고 없음)"; return; }
   $("online").textContent = d.online ? "● 온라인" : `● 오프라인 (${d.age_s}s 전)`;
@@ -97,8 +148,80 @@ async function tick() {
   $("cmd").textContent = c ? `${c.station} ${c.status}${c.error ? " — " + c.error : ""}` : "-";
   $("arm").textContent = s.arm.safe ? `확인됨 (${s.arm.age_s}s 전)` : s.arm.reason;
 }
+
+// --- 휴머노이드 (phone1) ---------------------------------------------------------
+const PHONE = "phone1";
+const pill = (t) => `<span class="pill ${t}">${t}</span>`;
+let reagents = {};
+
+async function loadReagents() {
+  const cfg = await api("GET", "/reagents");
+  reagents = cfg.reagents;
+  $("mm").textContent = cfg.marker_size_mm;
+  $("target").innerHTML = Object.entries(reagents)
+    .map(([id, name]) => `<option value="${id}">${id} — ${name}</option>`).join("");
+  $("target").onchange = () => { $("marker-link").href = `/aruco/marker/${$("target").value}.png`; };
+  $("target").onchange();
+}
+loadReagents().catch(e => { $("vmsg").textContent = "시약 설정 읽기 실패: " + e.message; });
+
+const vact = (fn) => async () => {
+  try { await fn(); $("vmsg").textContent = ""; } catch (e) { $("vmsg").textContent = "실패: " + e.message; }
+};
+$("vstart").onclick = vact(() => api("POST", `/phone/${PHONE}/video`, { action: "start" }));
+$("vstop").onclick = vact(() => api("POST", `/phone/${PHONE}/video`, { action: "stop" }));
+$("vgo").onclick = vact(() => api("POST", "/verify/start", { target_id: Number($("target").value), device_id: PHONE }));
+$("vend").onclick = vact(() => api("POST", "/verify/stop"));
+
+const hact = (fn) => async () => {
+  try { const r = await fn(); $("hmsg").textContent = r.sent ? "" : "저장됨 — 폰이 연결되면 전달"; }
+  catch (e) { $("hmsg").textContent = "실패: " + e.message; }
+};
+for (const b of document.querySelectorAll(".states button")) {
+  b.onclick = hact(() => api("POST", `/phone/${PHONE}/state`, { state: b.dataset.state, message: $("hmessage").value }));
+}
+$("hsend").onclick = hact(() => api("POST", `/phone/${PHONE}/state`,
+  { state: (lastHead && lastHead.state) || "idle", message: $("hmessage").value }));
+let lastHead = null;
+
+function tickPhone(s) {
+  const p = (s.phones || {})[PHONE] || {};
+  const v = p.video, vf = s.verify || {};
+  $("phone-conn").textContent = p.connected ? "● 연결됨" : "● 미연결";
+  $("phone-conn").className = p.connected ? "on" : "off";
+  const cam = p.status ? p.status.camera : "?";
+  if (!v) $("video").textContent = `프레임 없음 (폰 카메라: ${cam})`;
+  else $("video").innerHTML = `${v.stale ? '<span class="off">끊김</span>' : '<span class="on">수신 중</span>'}`
+    + ` · 마지막 프레임 ${v.last_frame_age_s}s 전 · ${v.count}장 · ${v.size ? v.size.join("x") : ""} ${Math.round(v.bytes / 1024)}KB`
+    + ` · 폰: ${cam} · 검출 ${v.detect.ms}ms`;
+  if (v && !v.stale) {
+    const ms = v.detect.markers.map(m => `id ${m.id} (${m.side_px}px)`);
+    $("ids").textContent = ms.length ? ms.join(", ") : "없음";
+  } else $("ids").textContent = "-";
+  if (v && v.count !== $("cam").dataset.count) {
+    $("cam").dataset.count = v.count;
+    $("cam").src = `/phone/${PHONE}/frame?annotated=${$("annot").checked ? 1 : 0}&n=${v.count}`;
+  }
+
+  $("vlive").innerHTML = vf.active ? pill(vf.live) : "";
+  if (vf.target_id == null) $("vprog").textContent = "-";
+  else $("vprog").textContent = `목표 ${vf.target_id} (${vf.target_name}) · ${vf.active ? "진행 중" : "종료"}`
+    + ` · 검출 ID [${vf.observed_ids.join(", ")}] · 연속 ${vf.streak}/${vf.confirm_frames} · ${vf.frames}프레임 · ${vf.elapsed_s}s`;
+  const r = vf.result;
+  if (!r) $("vresult").textContent = "-";
+  else {
+    const age = Math.round(Date.now() / 1000 - r.decided_at);
+    $("vresult").innerHTML = `${pill(r.status)} ${r.status === "MATCH" ? "시약 일치 확인" : r.status === "MISMATCH" ? "시약 불일치" : "판단 불가"}`
+      + ` — 목표 ${r.target_id} ${r.target_name}` + (r.observed_id != null ? `, 관측 ${r.observed_id} ${r.observed_name}` : "")
+      + ` · ${r.note} · ${age}s 전`;
+  }
+
+  lastHead = p.head || null;
+  $("head-now").textContent = lastHead ? `현재: ${lastHead.state.toUpperCase()} "${lastHead.message}" (${lastHead.source})` : "";
+}
+
 tick();
-setInterval(tick, 1000);
+setInterval(tick, 500);
 </script>
 </body>
 </html>

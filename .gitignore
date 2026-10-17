@@ -25,3 +25,6 @@ data/
 
 # 파이 uplink 의 명령 진행 단계
 rail/uplink_command.json
+
+# start_server.bat 가 남기는 서버 로그
+logs/

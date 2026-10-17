@@ -21,7 +21,7 @@
 | `GET /health` | `{"ok": true, "ts": ...}` — 키 없이 됨 |
 | `GET /status` | 장치별 최신 보고(`online` = 5초 이내 보고), 레일 명령, 팔 안전 상태, 폰 연결·추적·영상 요약 |
 
-웹 대시보드는 아직 없다. 웹을 만들 때는 우선 `GET /status` 를 1초 폴링하면 된다.
+웹 대시보드 `GET /ui` 는 `GET /status` 를 0.5초 폴링한다. 센서·레일, 휴머노이드 카메라, ArUco 확인, 얼굴 상태 수동 제어.
 
 ## 2. 파이 → 중앙: 상태 보고
 
@@ -164,10 +164,19 @@ PENDING ─RUNNING(파이의 실행 승인 요청)─▶ RUNNING ─▶ DONE | F
 
 ```json
 {"type": "welcome", "device_id": "phone1"}
+{"type": "state", "state": "working", "message": "시약병을 집고 있어요", "source": "manual", "ts": 1760500000.0}
 {"type": "expression", "value": "working"}
 {"type": "track", "action": "start", "target": "face"}
+{"type": "video", "action": "start"}
 {"type": "error", "error": "..."}
 ```
+
+- `state`: 얼굴 상태 + 하단 문구. `state` 는 표정 집합과 같다(`idle`, `thinking`, `working`, `danger`, `done`, `error`).
+  `message` 가 비면 앱 기본 문구. `source` 는 `manual`(운영자/실행기) 또는 `verify`(ArUco 확인 자동).
+  서버는 마지막 `state` 를 기억하고 폰이 다시 붙으면 `welcome` 직후 다시 보낸다.
+- `expression`: 표정만 바꾼다(문구 초기화). 하위 호환용. 새 코드는 `state` 를 쓴다.
+- `video`: 얼굴 화면을 유지한 채 전면 카메라 JPEG 전송을 켜고 끈다 (5.2).
+- 폰은 서버와 끊기면 서버가 보낸 상태를 유지하지 않고 `error` 얼굴 + "서버 연결이 끊어졌어요" 를 보인다.
 
 표정: `idle`, `thinking`, `working`, `danger`, `done`, `error`. 추적 대상: `face` 만.
 같은 `device_id` 로 다시 붙으면 이전 연결을 닫는다. 끊기면 폰이 재접속한다(지수 백오프 권장, 최대 5초).
@@ -177,6 +186,7 @@ PENDING ─RUNNING(파이의 실행 승인 요청)─▶ RUNNING ─▶ DONE | F
 첫 메시지 `{"type": "hello", "device_id": "phone1"}` (텍스트), 이후 **바이너리 메시지 1개 = JPEG 1장**.
 권장 1~3fps, 긴 변 320~640px, 오디오 없음. 전송이 밀리면 폰이 오래된 프레임을 버린다.
 서버는 마지막 1장만 메모리에 둔다(디스크 저장 없음). JPEG(`FF D8`)가 아니거나 2MB 초과면 무시.
+**모든 프레임에서 ArUco 마커를 찾는다**(7절). 결과는 `/status` 의 `phones.<id>.video.detect` 에.
 
 ### 5.3 테스트용 REST
 
@@ -184,13 +194,58 @@ PENDING ─RUNNING(파이의 실행 승인 요청)─▶ RUNNING ─▶ DONE | F
 | --- | --- |
 | `POST /phone/{device_id}/expression` | `{"value": "danger"}` → 폰에 expression 전달. 미연결 404, 잘못된 값 422 |
 | `POST /phone/{device_id}/track` | `{"action": "start"\|"stop", "target": "face"}` |
-| `GET /phone/{device_id}/frame` | 마지막 JPEG. 헤더 `X-Frame-Age-S`, `X-Frame-Count`. 없으면 404 |
+| `POST /phone/{device_id}/state` | `{"state": "working", "message": "시약을 붓고 있어요"}` → 폰에 `state` 전달. 미연결이면 저장만 하고 `sent:false` (다음 접속 때 전달) |
+| `POST /phone/{device_id}/video` | `{"action": "start"\|"stop"}` → 폰 영상 전송 켜기/끄기 |
+| `GET /phone/{device_id}/frame` | 마지막 JPEG. 헤더 `X-Frame-Age-S`, `X-Frame-Count`. 없으면 404. `?annotated=1` 이면 검출 마커 박스·ID 를 그려서 |
 
-## 6. 향후 모듈 계약 (미구현 — 문서만)
+`/status` 의 `phones.<id>` 에 `head`(마지막 얼굴 상태), `video.stale`(3초 이상 프레임 없음), `video.detect`(마커 ID·크기 px·검출 ms) 가 추가된다.
+
+## 6. ArUco 시약 확인
+
+시약병에 붙은 ArUco 마커(`DICT_4X4_50`, ID 1~5, 약 20mm)가 폰 전면 카메라 영상에서 목표 ID 와 같은지 본다.
+구현: `central/aruco.py`. 설정: `central/reagents.json`(ID → 시약명, 사전, 연속 프레임 수, 타임아웃).
+
+**이건 '시약 일치 확인'이다. 파지 성공 판정이 아니다.** ID 가 맞아도 병을 제대로 집었다는 뜻은 아니다.
+
+| | |
+| --- | --- |
+| `GET /reagents` | 설정 전체 |
+| `POST /reagents/reload` | `reagents.json` 다시 읽기 (진행 중 검증은 중단) |
+| `GET /aruco/marker/{id}.png?px=400` | 테스트용 마커 이미지 (여백 포함) |
+| `GET /verify` | 현재 검증 스냅샷 (아래) |
+| `POST /verify/start` | `{"target_id": 3, "device_id": "phone1"}` → 폰에 `video start` 와 '확인 중' 얼굴 |
+| `POST /verify/stop` | 운영자 중단. 확정 전이면 결과 `NOT_DETECTED`(또는 `AMBIGUOUS`) |
+
+스냅샷:
+
+```json
+{"active": true, "target_id": 3, "target_name": "시약 3", "device_id": "phone1",
+ "live": "CONFIRMING", "observed_ids": [3], "streak": 2, "confirm_frames": 3, "frames": 7,
+ "elapsed_s": 3.5, "timeout_s": 20, "result": null}
+```
+
+판정 규칙 (한 프레임에 보이는 ID 집합 S, 목표 T):
+
+| 상황 | `live` (진행 중) | 확정 `result.status` |
+| --- | --- | --- |
+| S 비어 있음 | `NOT_DETECTED` (연속 카운트 리셋) | 타임아웃/중단 시 `NOT_DETECTED` |
+| S 가 2개 이상 | `AMBIGUOUS` — T 가 섞여 있어도 성공 아님 | 타임아웃/중단 시 `AMBIGUOUS` |
+| S = {x} | `CONFIRMING` (같은 x 가 연속으로 쌓임) | `confirm_frames` 번 연속이면 x == T → `MATCH`, 아니면 `MISMATCH` |
+| 프레임이 `stale_after_s` 이상 없음 | `STALE` | — |
+
+읽지 못하면 불일치가 아니라 `NOT_DETECTED`/`AMBIGUOUS` 다. 확정되면 `active=false` 가 되고 `result` 는 다음 `start` 까지 남는다.
+
+검증 중 폰 얼굴은 자동으로 바뀐다(`source: "verify"`): CONFIRMING/NOT_DETECTED → `working`, AMBIGUOUS → `thinking`, STALE → `error`,
+MATCH → `done` "시약을 확인했어요", MISMATCH → `danger` "선택한 시약이 다릅니다", 타임아웃 → `error`.
+
+마커 크기: 긴 변 640px 영상에서 20mm 마커가 25px 이상 나와야 안정적이다 (약 30cm 이내). 더 멀면 앱 설정에서 고해상도·긴 변 px 를 올린다.
+`/status` 의 `video.detect.markers[].side_px` 와 `/ui` 영상의 px 표시로 확인한다.
+
+## 7. 향후 모듈 계약 (미구현 — 문서만)
 
 이 모듈들은 아직 중앙 서버에 없다. 붙일 때 아래 형태를 지킨다. 같은 프로세스 안의 Python 함수 호출을 기본으로 한다.
 
-### 6.1 LLM — 자연어 → 실험 계획
+### 7.1 LLM — 자연어 → 실험 계획
 
 입력:
 
@@ -215,10 +270,10 @@ PENDING ─RUNNING(파이의 실행 승인 요청)─▶ RUNNING ─▶ DONE | F
 }
 ```
 
-`kind`: `rail`(→ `POST /rail/command`), `act`(→ 6.3), `measure`(→ 2절 보고값 읽기), `expression`(→ 5.3).
+`kind`: `rail`(→ `POST /rail/command`), `act`(→ 7.3), `measure`(→ 2절 보고값 읽기), `expression`(→ 5.3 `/phone/{id}/state`), `verify`(→ 6절).
 LLM 은 mm 좌표를 만들지 않는다. 스테이션 이름만 쓴다.
 
-### 6.2 GraphDB — 실행 가능성 검토
+### 7.2 GraphDB — 실행 가능성 검토
 
 입력: 6.1 의 계획 JSON. 출력:
 
@@ -230,7 +285,7 @@ LLM 은 mm 좌표를 만들지 않는다. 스테이션 이름만 쓴다.
 
 `feasible=false` 면 실행하지 않는다. 데이터 구조는 바뀔 예정이라 이 입출력 형태만 고정한다.
 
-### 6.3 ACT — 로봇팔 동작 실행
+### 7.3 ACT — 로봇팔 동작 실행
 
 ```
 start(task_id: str, params: dict) -> {"execution_id": str, "status": "RUNNING"}

@@ -8,6 +8,7 @@ GPIO·시리얼 같은 하드웨어 라이브러리를 import 하지 않는다. 
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import time
@@ -16,11 +17,13 @@ import urllib.request
 from pathlib import Path
 from typing import Literal, Optional
 
+import cv2
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from . import aruco
 from .state import MAX_SPEED_MM_S, CommandError, Store
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -34,10 +37,22 @@ EXPRESSIONS = ("idle", "thinking", "working", "danger", "done", "error")
 
 store = Store(DATA_DIR, arm_safe_ttl_s=ARM_SAFE_TTL_S)
 phones = {}  # device_id -> {"ws", "hello", "status", "track", "connected_at"}
-frames = {}  # device_id -> {"jpeg", "received_at", "count"}  메모리에만
+frames = {}  # device_id -> {"jpeg", "received_at", "count", "detect"}  메모리에만
+head_state = {}  # device_id -> {"state", "message", "source", "ts"}  마지막으로 폰에 보낸 얼굴 상태
+aruco_cfg = aruco.load_config()
+detector = aruco.Detector(aruco_cfg["dictionary"])
+verifier = aruco.Verifier(aruco_cfg["reagents"], aruco_cfg["confirm_frames"], aruco_cfg["timeout_s"])
+_verify_pushed = None  # 검증이 마지막으로 폰에 보낸 (state, message)
 
 
-app = FastAPI(title="ARMchemist Central", version="0.1.0")
+@contextlib.asynccontextmanager
+async def _lifespan(app):
+    task = asyncio.create_task(_verify_ticker())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="ARMchemist Central", version="0.2.0", lifespan=_lifespan)
 
 
 def _cmd_call(fn, *args, **kwargs):
@@ -77,11 +92,17 @@ async def status():
         for dev, p in phones.items()
     }
     for dev, f in frames.items():
+        d = f.get("detect") or {}
         phone_view.setdefault(dev, {"connected": False})["video"] = {
             "last_frame_age_s": round(now - f["received_at"], 1),
-            "bytes": len(f["jpeg"]), "count": f["count"]}
+            "stale": now - f["received_at"] > aruco_cfg["stale_after_s"],
+            "bytes": len(f["jpeg"]), "count": f["count"], "size": d.get("size"),
+            "detect": {"ids": d.get("ids", []), "markers": d.get("markers", []), "ms": d.get("ms")}}
+    for dev, h in head_state.items():
+        phone_view.setdefault(dev, {"connected": False})["head"] = h
     return {"devices": devices, "rail_commands": store.commands,
-            "arm": {**store.arm_status(), "last": store.arm}, "phones": phone_view}
+            "arm": {**store.arm_status(), "last": store.arm}, "phones": phone_view,
+            "verify": verifier.snapshot(_frame_age(verifier.device_id), aruco_cfg["stale_after_s"])}
 
 
 # --- 파이 보고 ----------------------------------------------------------------
@@ -207,6 +228,8 @@ async def ws_phone(ws: WebSocket):
     phones[dev] = {"ws": ws, "hello": hello, "status": None, "track": None,
                    "connected_at": time.time()}
     await ws.send_json({"type": "welcome", "device_id": dev})
+    if dev in head_state:  # 재접속하면 마지막 얼굴 상태를 복구한다
+        await ws.send_json({"type": "state", **head_state[dev]})
     try:
         while True:
             msg = await ws.receive_json()
@@ -239,20 +262,30 @@ async def ws_phone_video(ws: WebSocket):
             if not jpeg or len(jpeg) > MAX_FRAME_BYTES or not jpeg.startswith(b"\xff\xd8"):
                 continue  # 텍스트·비JPEG·너무 큰 프레임은 버린다
             count = frames.get(dev, {}).get("count", 0) + 1
-            frames[dev] = {"jpeg": jpeg, "received_at": time.time(), "count": count}
+            # 모든 프레임에서 ArUco 를 찾는다 (640px 에서 수 ms). 디코드는 스레드에서.
+            detect = await asyncio.to_thread(detector.detect, jpeg)
+            frames[dev] = {"jpeg": jpeg, "received_at": time.time(), "count": count, "detect": detect}
+            if verifier.active and verifier.device_id == dev:
+                verifier.observe(detect)
+                await _push_verify()
     except (WebSocketDisconnect, RuntimeError):
         pass
 
 
 @app.get("/phone/{device_id}/frame",
          responses={200: {"content": {"image/jpeg": {}}}}, response_class=Response)
-def phone_frame(device_id: str):
+def phone_frame(device_id: str, annotated: bool = False):
+    """마지막 JPEG. annotated=1 이면 검출된 마커 박스·ID 를 그려서 준다."""
     f = frames.get(device_id)
     if f is None:
         raise HTTPException(status_code=404, detail=f"{device_id} 의 프레임이 없습니다")
-    return Response(content=f["jpeg"], media_type="image/jpeg",
+    jpeg = f["jpeg"]
+    if annotated and f.get("detect"):
+        target = verifier.target_id if verifier.device_id == device_id else None
+        jpeg = aruco.annotate(jpeg, f["detect"], target)
+    return Response(content=jpeg, media_type="image/jpeg",
                     headers={"X-Frame-Age-S": f"{time.time() - f['received_at']:.2f}",
-                             "X-Frame-Count": str(f["count"])})
+                             "X-Frame-Count": str(f["count"]), "Cache-Control": "no-store"})
 
 
 async def _send_phone(device_id, msg):
@@ -283,3 +316,128 @@ async def phone_expression(device_id: str, body: ExpressionRequest):
 @app.post("/phone/{device_id}/track")
 async def phone_track(device_id: str, body: TrackRequest):
     return await _send_phone(device_id, {"type": "track", "action": body.action, "target": body.target})
+
+
+# --- 휴머노이드 얼굴 상태 -----------------------------------------------------------
+
+
+class HeadStateRequest(BaseModel):
+    state: Literal[EXPRESSIONS]
+    message: str = Field(default="", max_length=120, description="얼굴 아래 짧은 문구. 비우면 앱 기본 문구")
+
+
+async def _set_head_state(device_id, state, message, source):
+    """상태를 기억하고, 폰이 붙어 있으면 보낸다. 안 붙어 있으면 다음 hello 때 복구된다."""
+    head_state[device_id] = {"state": state, "message": message, "source": source, "ts": time.time()}
+    p = phones.get(device_id)
+    if p is None:
+        return False
+    try:
+        await p["ws"].send_json({"type": "state", **head_state[device_id]})
+        return True
+    except Exception:
+        return False
+
+
+@app.post("/phone/{device_id}/state")
+async def phone_state(device_id: str, body: HeadStateRequest):
+    """운영자·향후 LLM/ACT 실행기가 부른다. 테스트 UI 의 상태 버튼도 이것."""
+    sent = await _set_head_state(device_id, body.state, body.message, "manual")
+    return {"sent": sent, **head_state[device_id]}
+
+
+class VideoRequest(BaseModel):
+    action: Literal["start", "stop"]
+
+
+@app.post("/phone/{device_id}/video")
+async def phone_video(device_id: str, body: VideoRequest):
+    """폰의 전면 카메라 영상 전송을 원격으로 켜고 끈다 (얼굴 화면을 유지한 채)."""
+    return await _send_phone(device_id, {"type": "video", "action": body.action})
+
+
+# --- ArUco 시약 확인 --------------------------------------------------------------
+
+
+def _frame_age(device_id):
+    f = frames.get(device_id)
+    return None if f is None else time.time() - f["received_at"]
+
+
+async def _push_verify():
+    """검증 상태가 바뀌었으면 해당 폰 얼굴을 바꾼다."""
+    global _verify_pushed
+    if verifier.device_id is None:
+        return
+    snap = verifier.snapshot(_frame_age(verifier.device_id), aruco_cfg["stale_after_s"])
+    hs = aruco.head_state_for(snap)
+    if hs is not None and hs != _verify_pushed:
+        _verify_pushed = hs
+        await _set_head_state(verifier.device_id, hs[0], hs[1], "verify")
+
+
+async def _verify_ticker():
+    while True:
+        await asyncio.sleep(0.5)
+        try:
+            verifier.tick()
+            await _push_verify()
+        except Exception:  # 티커는 죽지 않는다
+            pass
+
+
+@app.get("/reagents")
+def reagents():
+    return aruco_cfg
+
+
+@app.post("/reagents/reload")
+def reagents_reload():
+    """central/reagents.json 을 다시 읽는다. 진행 중인 검증은 중단된다."""
+    global aruco_cfg, detector, verifier
+    aruco_cfg = aruco.load_config()
+    detector = aruco.Detector(aruco_cfg["dictionary"])
+    verifier.stop("설정 다시 읽음")
+    verifier = aruco.Verifier(aruco_cfg["reagents"], aruco_cfg["confirm_frames"], aruco_cfg["timeout_s"])
+    return aruco_cfg
+
+
+@app.get("/aruco/marker/{marker_id}.png", responses={200: {"content": {"image/png": {}}}},
+         response_class=Response)
+def aruco_marker(marker_id: int, px: int = 400):
+    """테스트용 마커 이미지. 인쇄하거나 화면에 띄워 카메라에 보여준다."""
+    if not 0 <= marker_id < 50:
+        raise HTTPException(status_code=400, detail="DICT_4X4_50 의 ID 는 0~49")
+    img = detector.marker_image(marker_id, max(50, min(px, 2000)))
+    img = cv2.copyMakeBorder(img, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)  # 흰 여백 필수
+    return Response(content=cv2.imencode(".png", img)[1].tobytes(), media_type="image/png")
+
+
+class VerifyStart(BaseModel):
+    target_id: int = Field(ge=0, le=49)
+    device_id: str = "phone1"
+
+
+@app.get("/verify")
+def verify_get():
+    return verifier.snapshot(_frame_age(verifier.device_id), aruco_cfg["stale_after_s"])
+
+
+@app.post("/verify/start")
+async def verify_start(body: VerifyStart):
+    """목표 시약 ID 확인 시작. 폰에 영상 전송 시작을 요청하고 얼굴을 '확인 중' 으로 바꾼다."""
+    global _verify_pushed
+    verifier.start(body.target_id, body.device_id)
+    _verify_pushed = None
+    if body.device_id in phones:
+        with contextlib.suppress(Exception):
+            await phones[body.device_id]["ws"].send_json({"type": "video", "action": "start"})
+    await _push_verify()
+    return verify_get()
+
+
+@app.post("/verify/stop")
+async def verify_stop():
+    verifier.stop()
+    await _push_verify()
+    return verify_get()

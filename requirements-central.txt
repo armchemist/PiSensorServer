@@ -1,5 +1,8 @@
 fastapi
 uvicorn[standard]
+# ArUco 시약 확인 (central/aruco.py). headless: GUI 없는 서버용 OpenCV, contrib 에 aruco 포함
+opencv-contrib-python-headless
+numpy
 
 # 테스트용 (중앙 서버 실행에는 불필요)
 # pytest

@@ -113,6 +113,16 @@ curl.exe -o frame.jpg http://127.0.0.1:8100/phone/phone1/frame
 
 fake_phone 창에 `받음: {'type': 'expression', ...}` 이 찍히고, track start 후 `/status` 의 `phones.phone1.last_track` 이 채워진다.
 
+### Windows 더블클릭 실행
+
+| 파일 | 하는 일 |
+| --- | --- |
+| `start_server.bat` | 이미 떠 있으면 대시보드만 열기 → `.venv` 없으면 생성 → 패키지 없으면 `requirements-central.txt` 설치 → `uvicorn central.main:app` 을 숨은 창으로 실행(PID 는 `data/central.pid`, 로그 `logs/central.log`) → `/health` 응답 대기(최대 30초) → 브라우저로 `/ui` 열기. 폰에 넣을 PC IP 목록도 찍는다 |
+| `check_server.bat` | 서버 프로세스, `/health`, `/status` 요약(pi2·phone1·verify), 로그 마지막 10줄 |
+| `stop_server.bat` | **이 저장소의 `.venv` 로 뜬 `uvicorn central.main:app` 만** 종료. 다른 Python 은 건드리지 않는다 |
+
+세 파일 모두 `tools/central_ctl.ps1` 과 함께 저장소 안에 있어야 한다. 서버는 콘솔 창 없이 돌므로 로그는 `logs/central.log` 또는 `check_server.bat` 로 본다.
+
 ### 테스트
 
 ```powershell
