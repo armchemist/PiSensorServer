@@ -44,12 +44,6 @@ THERMAL_SERIES_MAX = _int("THERMAL_SERIES_MAX", 86400)
 # --- 중앙 서버 연결 (server/uplink.py) ---
 # 비우면 기존처럼 파이 단독으로 운용한다. 예: http://100.64.0.10:8100
 CENTRAL_URL = os.environ.get("CENTRAL_URL") or None
-CENTRAL_API_KEY = os.environ.get("CENTRAL_API_KEY") or None  # 중앙 서버의 API_KEY
 DEVICE_ID = os.environ.get("DEVICE_ID") or "pi2"
 REPORT_INTERVAL_S = _float("REPORT_INTERVAL_S", 1.0)
 POLL_INTERVAL_S = _float("POLL_INTERVAL_S", 1.0)
-
-# --- 인증 ---
-# 설정하면 모든 요청에 X-API-Key 헤더가 필요하다.
-# 외부(Tailscale/터널)로 노출하기 전에 반드시 설정할 것.
-API_KEY = os.environ.get("API_KEY") or None

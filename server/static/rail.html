@@ -183,20 +183,13 @@
 <div id="toast"></div>
 
 <script>
-// API 키가 걸려 있으면 ?api_key=... 로 열거나 localStorage 에 넣어 둔다.
-const params = new URLSearchParams(location.search);
-const API_KEY = params.get("api_key") || localStorage.getItem("api_key") || "";
-if (params.get("api_key")) localStorage.setItem("api_key", params.get("api_key"));
-
 function url(path) {
-  const u = new URL(path, location.origin);
-  if (API_KEY) u.searchParams.set("api_key", API_KEY);
-  return u.toString();
+  return new URL(path, location.origin).toString();
 }
 async function api(path, method = "GET", body) {
   const res = await fetch(url(path), {
     method,
-    headers: { "Content-Type": "application/json", ...(API_KEY ? { "X-API-Key": API_KEY } : {}) },
+    headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));

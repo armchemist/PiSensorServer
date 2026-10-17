@@ -335,16 +335,3 @@ def test_uplink_claim_rejected_when_arm_expired(live, monkeypatch):
     assert cm.store.commands["pi2"]["status"] == "FAILED"
     assert not uplink.STATE_PATH.exists()
 
-
-def test_api_key(client, monkeypatch):
-    monkeypatch.setattr(cm, "API_KEY", "k")
-    assert client.get("/health").status_code == 200  # 연결 확인은 키 없이
-    assert client.get("/status").status_code == 401
-    assert client.get("/status", headers={"X-API-Key": "k"}).status_code == 200
-    from starlette.websockets import WebSocketDisconnect
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/ws/phone") as ws:
-            ws.receive_json()
-    with client.websocket_connect("/ws/phone?api_key=k") as ws:
-        ws.send_json({"type": "hello", "device_id": "p"})
-        assert ws.receive_json()["type"] == "welcome"

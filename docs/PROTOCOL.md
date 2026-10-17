@@ -11,8 +11,7 @@
 ```
 
 - 모든 시각은 epoch 초(float). 문자열 인코딩은 UTF-8.
-- 인증: 중앙 서버에 `API_KEY` 를 설정하면 `X-API-Key` 헤더 또는 `?api_key=` 필요 (`/health` 제외).
-  WebSocket 은 `?api_key=` 를 쓴다. 키가 틀리면 1008 로 닫힌다.
+- 인증 없음 (POC). Tailscale·LAN 안에서만 쓴다.
 - 오류 응답은 FastAPI 기본형 `{"detail": "..."}`.
 
 ## 1. 연결 확인 / 전체 상태

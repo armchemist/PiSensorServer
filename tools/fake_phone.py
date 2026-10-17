@@ -1,6 +1,6 @@
 """스마트폰 앱 대역. 앱이 없을 때 /ws/phone, /ws/phone/video 를 손으로 확인한다.
 
-    python tools/fake_phone.py ws://127.0.0.1:8100 [--jpeg 사진.jpg] [--api-key KEY]
+    python tools/fake_phone.py ws://127.0.0.1:8100 [--jpeg 사진.jpg]
 
 - /ws/phone 에 hello·status 를 보내고, 서버가 보내는 expression/track 을 출력한다.
   track start 를 받으면 가짜 track_result 를 1초마다 보낸다.
@@ -20,15 +20,13 @@ ap = argparse.ArgumentParser()
 ap.add_argument("base", help="예: ws://192.168.0.10:8100")
 ap.add_argument("--device-id", default="phone1")
 ap.add_argument("--jpeg")
-ap.add_argument("--api-key")
 args = ap.parse_args()
-query = f"?api_key={args.api_key}" if args.api_key else ""
 tracking = threading.Event()
 
 
 def video():
     jpeg = open(args.jpeg, "rb").read()
-    with connect(f"{args.base}/ws/phone/video{query}") as ws:
+    with connect(f"{args.base}/ws/phone/video") as ws:
         ws.send(json.dumps({"type": "hello", "device_id": args.device_id}))
         while True:
             ws.send(jpeg)
@@ -38,7 +36,7 @@ def video():
 if args.jpeg:
     threading.Thread(target=video, daemon=True).start()
 
-with connect(f"{args.base}/ws/phone{query}") as ws:
+with connect(f"{args.base}/ws/phone") as ws:
     ws.send(json.dumps({"type": "hello", "device_id": args.device_id,
                         "capabilities": ["camera", "tracking", "face"]}))
     ws.send(json.dumps({"type": "status", "camera": "streaming" if args.jpeg else "off", "tracking": False}))

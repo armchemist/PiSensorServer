@@ -3,8 +3,7 @@
 #   ./run_central.sh
 # 대시보드: http://<이 노트북 Tailscale IP>:8100/ui
 #
-# API_KEY 는 기본으로 걸지 않는다 (Tailscale·LAN 안에서만 쓴다). 밖으로 열 거면 반드시 설정:
-#   API_KEY=... ./run_central.sh   (파이 .env 의 CENTRAL_API_KEY 도 같은 값으로)
+# 인증 없음 (POC). Tailscale·LAN 안에서만 쓴다.
 set -eu
 cd "$(dirname "$0")"
 

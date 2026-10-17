@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -25,10 +25,8 @@ from .state import MAX_SPEED_MM_S, CommandError, Store
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.environ.get("DATA_DIR") or REPO_ROOT / "data")
-API_KEY = os.environ.get("API_KEY") or None
 # 파이의 기존 API 주소. 비우면 마지막으로 보고가 온 IP 의 8000 포트를 쓴다.
 PI_URL = os.environ.get("PI_URL") or None
-PI_API_KEY = os.environ.get("PI_API_KEY") or None
 ARM_SAFE_TTL_S = float(os.environ.get("ARM_SAFE_TTL_S", 30))
 DEVICE_OFFLINE_AFTER_S = 5.0
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -39,18 +37,7 @@ phones = {}  # device_id -> {"ws", "hello", "status", "track", "connected_at"}
 frames = {}  # device_id -> {"jpeg", "received_at", "count"}  메모리에만
 
 
-def _key_ok(header_key, query_key):
-    return not API_KEY or API_KEY in (header_key, query_key)
-
-
-def require_api_key(x_api_key: str = Header(default=None), api_key: str = Query(default=None)):
-    """API_KEY 환경변수가 설정된 경우에만 검사한다 (파이 서버와 같은 방식)."""
-    if not _key_ok(x_api_key, api_key):
-        raise HTTPException(status_code=401, detail="유효하지 않은 API 키")
-
-
 app = FastAPI(title="ARMchemist Central", version="0.1.0")
-auth = [Depends(require_api_key)]
 
 
 def _cmd_call(fn, *args, **kwargs):
@@ -70,11 +57,11 @@ def health():
 
 @app.get("/ui", include_in_schema=False)
 def ui():
-    """간단한 대시보드. 페이지 자체는 키 없이 열리고, API 호출에 입력한 키를 붙인다."""
+    """간단한 대시보드. /status 를 1초마다 읽는다."""
     return FileResponse(Path(__file__).with_name("ui.html"))
 
 
-@app.get("/status", dependencies=auth)
+@app.get("/status")
 async def status():
     # async: 폰 연결 dict 를 바꾸는 이벤트 루프와 같은 스레드에서 읽는다.
     now = time.time()
@@ -106,7 +93,7 @@ class Report(BaseModel):
     rail: dict
 
 
-@app.post("/devices/{device_id}/report", dependencies=auth)
+@app.post("/devices/{device_id}/report")
 def device_report(device_id: str, body: Report, request: Request):
     store.report(device_id, body.model_dump(), host=request.client.host if request.client else None)
     return {"ok": True}
@@ -123,7 +110,7 @@ class ArmState(BaseModel):
     note: Optional[str] = None
 
 
-@app.post("/arm/state", dependencies=auth)
+@app.post("/arm/state")
 def arm_state(body: ArmState):
     return store.set_arm(body.model_dump())
 
@@ -144,26 +131,25 @@ class RailResult(BaseModel):
     result: Optional[dict] = None
 
 
-@app.post("/rail/command", status_code=201, dependencies=auth)
+@app.post("/rail/command", status_code=201)
 def rail_command_create(body: RailCommandRequest):
     return _cmd_call(store.create, body.device_id, body.station, body.speed_mm_s, body.id)
 
 
-@app.get("/rail/command", dependencies=auth)
+@app.get("/rail/command")
 def rail_command_poll(device_id: str = "pi2"):
     """파이 폴링용. PENDING 명령만 준다. 없으면 {"command": null}."""
     return {"command": store.pending(device_id)}
 
 
-@app.post("/rail/command/{cmd_id}/result", dependencies=auth)
+@app.post("/rail/command/{cmd_id}/result")
 def rail_command_result(cmd_id: str, body: RailResult):
     return _cmd_call(store.report_result, cmd_id, body.status, body.error, body.result)
 
 
 def _post_pi_stop(url):
     req = urllib.request.Request(url, data=b"{}", method="POST",
-                                 headers={"Content-Type": "application/json",
-                                          **({"X-API-Key": PI_API_KEY} if PI_API_KEY else {})})
+                                 headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=3) as resp:
             return {"ok": True, "status": resp.status, "body": json.loads(resp.read() or b"null")}
@@ -173,7 +159,7 @@ def _post_pi_stop(url):
         return {"ok": False, "status": None, "body": str(exc)}
 
 
-@app.post("/rail/stop", dependencies=auth)
+@app.post("/rail/stop")
 async def rail_stop(device_id: str = "pi2"):
     """시작 전 명령은 버리고, 파이의 기존 POST /rail/stop 을 부른다.
 
@@ -195,10 +181,7 @@ async def rail_stop(device_id: str = "pi2"):
 
 
 async def _hello(ws):
-    """연결 직후 hello 를 받는다. 키 검사·형식이 틀리면 닫고 None."""
-    if not _key_ok(ws.headers.get("x-api-key"), ws.query_params.get("api_key")):
-        await ws.close(code=1008)
-        return None
+    """연결 직후 hello 를 받는다. 형식이 틀리면 닫고 None."""
     await ws.accept()
     try:
         msg = await asyncio.wait_for(ws.receive_json(), timeout=10)
@@ -261,7 +244,7 @@ async def ws_phone_video(ws: WebSocket):
         pass
 
 
-@app.get("/phone/{device_id}/frame", dependencies=auth,
+@app.get("/phone/{device_id}/frame",
          responses={200: {"content": {"image/jpeg": {}}}}, response_class=Response)
 def phone_frame(device_id: str):
     f = frames.get(device_id)
@@ -292,11 +275,11 @@ class TrackRequest(BaseModel):
     target: Literal["face"] = "face"
 
 
-@app.post("/phone/{device_id}/expression", dependencies=auth)
+@app.post("/phone/{device_id}/expression")
 async def phone_expression(device_id: str, body: ExpressionRequest):
     return await _send_phone(device_id, {"type": "expression", "value": body.value})
 
 
-@app.post("/phone/{device_id}/track", dependencies=auth)
+@app.post("/phone/{device_id}/track")
 async def phone_track(device_id: str, body: TrackRequest):
     return await _send_phone(device_id, {"type": "track", "action": body.action, "target": body.target})

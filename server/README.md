@@ -108,11 +108,11 @@ sudo systemctl enable --now pi-sensor-server
 
 ### 환경변수는 .env 로
 
-`API_KEY` 같은 값은 저장소 루트의 `.env` 에 넣는다. 유닛이 읽어 간다.
+`CENTRAL_URL` 같은 값은 저장소 루트의 `.env` 에 넣는다. 유닛이 읽어 간다.
 
 ```bash
 cat > ~/PiSensorServer/.env <<'EOF'
-API_KEY=충분히 긴 무작위 문자열
+CENTRAL_URL=http://100.100.207.108:8100
 EOF
 sudo systemctl restart pi-sensor-server
 ```
@@ -184,18 +184,9 @@ sudo systemctl start pi-sensor-server
 에이전트가 실패 원인을 구분할 수 있도록 나눠 뒀다. `503` 은 하드웨어를 꽂으면
 해결되고, `400` 은 명령을 바꿔야 해결된다.
 
-## 브라우저에서 볼 때 (API 키를 걸었다면)
+## 인증
 
-⚠️ `API_KEY` 를 설정했다면 브라우저에서는 `?api_key=...` 를 붙여야 한다.
-`<img>` 태그에는 헤더를 넣을 방법이 없어서 쿼리스트링도 받도록 해 두었다.
-
-```
-http://pi.local:8000/thermal/ui?api_key=키
-```
-
-`/thermal/ui` 는 한 번 이렇게 열어두면 키를 브라우저에 저장해서 다음부터는
-그냥 열어도 된다. **다만 쿼리스트링은 접근 로그와 브라우저 기록에 남는다.**
-외부에 노출한 환경이라면 Tailscale 내부망에서 보는 편이 낫다.
+없다 (POC). Tailscale·LAN 안에서만 쓰고 인터넷에 열지 말 것.
 
 ## 레일 보정
 
@@ -326,8 +317,6 @@ http://lab-pi:8000/rail/ui
   `MAX_SPEED_MM_S` 를 고치면 UI 도 따라온다
 - 캐리지를 옮긴 뒤 이름을 넣고 **여기를 등록**
 - 재보정으로 좌표가 막히면 경고와 함께 인정 버튼이 나온다
-
-API 키를 걸었다면 `?api_key=...` 를 붙여 한 번 열면 이후 브라우저가 기억한다.
 
 ## 열화상 카메라 (ThermoEye TMC160F)
 
@@ -489,15 +478,10 @@ curl 'http://pi.local:8000/thermal/roi/<id>?limit=60'
 - **Cloudflare Tunnel** — HTTPS 주소를 받는다
 - **작업 큐 폴링** — 파이가 주기적으로 할 일을 물어본다. 가장 방화벽 친화적
 
-### ⚠️ 노출 전에 API 키를 설정할 것
+### ⚠️ 인증이 없다
 
-```bash
-export API_KEY='충분히 긴 무작위 문자열'
-.venv/bin/python -m server.run
-```
-
-설정하면 모든 요청에 `X-API-Key` 헤더가 필요해진다. 설정하지 않으면 인증 없이
-누구나 레일을 움직일 수 있다. **로컬 테스트 중에만 생략할 것.**
+POC 라 API 키를 뺐다. 접속할 수 있는 사람은 누구나 레일을 움직일 수 있다.
+Tailscale·LAN 안에서만 쓸 것.
 
 ## 안전
 
@@ -529,9 +513,7 @@ export API_KEY='충분히 긴 무작위 문자열'
 | `THERMAL_DEVICE` | `/dev/video0` | 열화상 카메라 노드 |
 | `THERMAL_SAMPLE_INTERVAL_S` | `1.0` | ROI 시계열 샘플 간격(초) |
 | `THERMAL_SERIES_MAX` | `86400` | ROI 하나당 최대 샘플 수 |
-| `API_KEY` | (없음) | 설정 시 인증 필수 |
 | `CENTRAL_URL` | (없음) | 중앙 서버 주소. 비우면 단독 운용 ([`docs/PROTOCOL.md`](../docs/PROTOCOL.md)) |
-| `CENTRAL_API_KEY` | (없음) | 중앙 서버의 `API_KEY` |
 | `DEVICE_ID` | `pi2` | 중앙 서버에 보고할 이름 |
 | `REPORT_INTERVAL_S` | `1.0` | 상태 보고 간격(초) |
 | `POLL_INTERVAL_S` | `1.0` | 레일 명령 폴링 간격(초) |

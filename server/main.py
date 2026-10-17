@@ -24,11 +24,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import config, uplink
+from . import uplink
 from .hardware import thermal_render
 from .hardware.rail import RailBusy, rail
 from .hardware.sensors import reader as sensor_reader
@@ -59,25 +59,10 @@ async def lifespan(app: FastAPI):
     rail.close()
 
 
-def require_api_key(
-    x_api_key: str = Header(default=None),
-    api_key: str = Query(default=None),
-):
-    """API_KEY 환경변수가 설정된 경우에만 검사한다.
-
-    브라우저의 <img src=...> 는 헤더를 붙일 수 없어서 쿼리스트링도 받아준다.
-    다만 쿼리스트링은 접근 로그와 브라우저 기록에 남으므로, 외부로 노출한
-    환경이라면 헤더 쪽을 쓰는 게 낫다.
-    """
-    if config.API_KEY and config.API_KEY not in (x_api_key, api_key):
-        raise HTTPException(status_code=401, detail="유효하지 않은 API 키")
-
-
 app = FastAPI(
     title="Chemistry Lab Hardware API",
     version="0.1.0",
     lifespan=lifespan,
-    dependencies=[Depends(require_api_key)],
 )
 
 

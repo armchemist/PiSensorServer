@@ -12,7 +12,7 @@ User=pi
 WorkingDirectory=/home/pi/PiSensorServer
 ExecStart=/home/pi/PiSensorServer/.venv/bin/python -m server.run
 
-# API_KEY 같은 값은 이 파일에 KEY=VALUE 로 넣는다. 앞의 '-' 는 파일이 없어도
+# CENTRAL_URL 같은 값은 이 파일에 KEY=VALUE 로 넣는다. 앞의 '-' 는 파일이 없어도
 # 무시하고 진행하라는 뜻. 저장소에 커밋되지 않도록 .gitignore 에 넣어 두었다.
 EnvironmentFile=-/home/pi/PiSensorServer/.env
 

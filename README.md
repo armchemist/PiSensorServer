@@ -39,13 +39,13 @@ py -3.12 -m venv .venv            # 또는 uv venv -p 3.11 .venv
 
 | 환경변수 (중앙) | 기본값 | |
 | --- | --- | --- |
-| `API_KEY` | (없음) | 설정 시 `X-API-Key` / `?api_key=` 필요. LAN 밖으로 열면 반드시 설정 |
 | `PI_URL` | 마지막 보고 IP:8000 | `/rail/stop` 을 전달할 파이 주소. 예: `http://100.64.0.20:8000` |
-| `PI_API_KEY` | (없음) | 파이 서버의 `API_KEY` |
 | `ARM_SAFE_TTL_S` | `30` | 팔 안전 확인 유효 시간(초) |
 | `DATA_DIR` | `./data` | 센서 이력·명령 기록 |
 
-PowerShell 에서 환경변수: `$env:API_KEY = "..."` 후 같은 창에서 실행.
+PowerShell 에서 환경변수: `$env:PI_URL = "..."` 후 같은 창에서 실행.
+
+**인증은 없다** (POC, Tailscale·LAN 안에서만 쓴다). 인터넷에 열지 말 것.
 
 ### 네트워크: LAN IP / Tailscale / 방화벽
 
@@ -68,7 +68,6 @@ tailscale ip -4               # Tailscale IP (100.x.y.z)
 
 ```bash
 CENTRAL_URL=http://100.64.0.10:8100     # 데스크톱의 Tailscale 또는 LAN IP
-# CENTRAL_API_KEY=중앙의 API_KEY
 sudo systemctl restart pi-sensor-server
 journalctl -u pi-sensor-server -f       # "[uplink] ... 보고 시작" 이 보이면 연결
 ```

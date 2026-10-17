@@ -49,8 +49,6 @@ class CentralRejected(Exception):
 def _request(method, path, body=None):
     """JSON 요청. 4xx 는 CentralRejected, 네트워크 오류·5xx 는 그대로 던진다(재시도 대상)."""
     headers = {"Content-Type": "application/json"}
-    if config.CENTRAL_API_KEY:
-        headers["X-API-Key"] = config.CENTRAL_API_KEY
     req = urllib.request.Request(
         config.CENTRAL_URL.rstrip("/") + path, method=method, headers=headers,
         data=json.dumps(body, ensure_ascii=False).encode() if body is not None else None,

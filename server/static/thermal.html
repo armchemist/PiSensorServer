@@ -147,14 +147,8 @@
 const COLORS = ["#ffffff", "#ffff00", "#00ffff", "#00ff00", "#ff00ff"];
 const SENSOR_W = 160, SENSOR_H = 120;
 
-// API 키가 걸려 있으면 ?api_key=... 로 열거나 localStorage 에 넣어 둔다.
-const params = new URLSearchParams(location.search);
-const API_KEY = params.get("api_key") || localStorage.getItem("api_key") || "";
-if (params.get("api_key")) localStorage.setItem("api_key", params.get("api_key"));
-
 function url(path, extra = {}) {
   const u = new URL(path, location.origin);
-  if (API_KEY) u.searchParams.set("api_key", API_KEY);
   for (const [k, v] of Object.entries(extra)) {
     if (v !== null && v !== undefined && v !== "") u.searchParams.set(k, v);
   }
@@ -163,7 +157,7 @@ function url(path, extra = {}) {
 async function api(path, opts = {}, extra = {}) {
   const res = await fetch(url(path, extra), {
     ...opts,
-    headers: { "Content-Type": "application/json", ...(API_KEY ? { "X-API-Key": API_KEY } : {}) },
+    headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
   return res.status === 204 ? null : res.json();
