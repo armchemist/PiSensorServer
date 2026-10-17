@@ -37,8 +37,9 @@ def test_command_lifecycle_and_duplicates(tmp_path):
     assert e.value.status == 409  # 팔 안전 확인 없음
 
     approve(s)
+    s.report("pi2", {"rail": {"stations": ["시약존", "실린더존", "실험존"]}})
     with pytest.raises(CommandError) as e:
-        s.create("pi2", "아무데나", 5.0)
+        s.create("pi2", "아무데나", 5.0)  # 파이가 보고한 목록에 없음
     assert e.value.status == 400
 
     cmd = s.create("pi2", "실험존", 5.0, cmd_id="c1")

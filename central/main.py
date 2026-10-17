@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
@@ -65,6 +66,12 @@ def _cmd_call(fn, *args, **kwargs):
 @app.get("/health")
 def health():
     return {"ok": True, "ts": time.time()}
+
+
+@app.get("/ui", include_in_schema=False)
+def ui():
+    """간단한 대시보드. 페이지 자체는 키 없이 열리고, API 호출에 입력한 키를 붙인다."""
+    return FileResponse(Path(__file__).with_name("ui.html"))
 
 
 @app.get("/status", dependencies=auth)

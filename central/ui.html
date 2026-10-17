@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARMchemist 중앙</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1em auto; padding: 0 16px; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: .6em 1em; margin: .8em 0; }
+  h2 { font-size: 1em; margin: .2em 0 .5em; }
+  .big { font-size: 1.6em; font-weight: 600; }
+  .off { color: #b00; } .on { color: #080; }
+  table { border-collapse: collapse; } td { padding: .15em .8em .15em 0; }
+  #msg { white-space: pre-wrap; color: #555; font-size: .9em; }
+  button { margin: .2em .3em .2em 0; }
+</style>
+</head>
+<body>
+<h1>ARMchemist 중앙</h1>
+<p>API 키 <input id="key" type="password" size="30"> <span id="conn"></span></p>
+
+<section>
+  <h2>pi2 <span id="online"></span></h2>
+  <table>
+    <tr><td>pH</td><td class="big" id="ph">-</td></tr>
+    <tr><td>전도도</td><td class="big" id="ec">-</td><td>µS/cm</td></tr>
+    <tr><td>TDS</td><td id="tds">-</td><td>ppm</td></tr>
+    <tr><td>센서 상태</td><td id="sstat">-</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>레일</h2>
+  <table>
+    <tr><td>위치</td><td id="pos">-</td></tr>
+    <tr><td>스테이션</td><td id="station">-</td></tr>
+    <tr><td>명령</td><td id="cmd">-</td></tr>
+    <tr><td>팔 안전</td><td id="arm">-</td></tr>
+  </table>
+  <p>
+    <button id="safe">팔 안전 확인 (30초)</button><br>
+    <select id="stations"></select>
+    속도 <input id="speed" type="number" value="5" min="1" max="30" style="width:4em"> mm/s
+    <button id="go">이동</button>
+    <button id="stop">정지</button>
+  </p>
+  <div id="msg"></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+try { $("key").value = localStorage.getItem("apiKey") || ""; } catch (e) {}
+$("key").onchange = () => { try { localStorage.setItem("apiKey", $("key").value); } catch (e) {} };
+
+async function api(method, path, body) {
+  const r = await fetch(path, {
+    method, headers: { "Content-Type": "application/json", "X-API-Key": $("key").value },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(`${r.status} ${data && data.detail ? JSON.stringify(data.detail) : ""}`);
+  return data;
+}
+const act = (fn) => async () => {
+  try { $("msg").textContent = JSON.stringify(await fn(), null, 1); }
+  catch (e) { $("msg").textContent = "실패: " + e.message; }
+};
+
+$("safe").onclick = act(() => api("POST", "/arm/state", { safe: true, note: "UI 에서 눈으로 확인" }));
+$("go").onclick = act(() => api("POST", "/rail/command",
+  { station: $("stations").value, speed_mm_s: Number($("speed").value) }));
+$("stop").onclick = act(() => api("POST", "/rail/stop"));
+
+const fmt = (v, d) => v == null ? "-" : Number(v).toFixed(d);
+
+async function tick() {
+  let s;
+  try { s = await api("GET", "/status"); $("conn").textContent = ""; }
+  catch (e) { $("conn").textContent = "⚠ " + e.message; return; }
+  const d = s.devices.pi2;
+  if (!d) { $("online").textContent = "(보고 없음)"; return; }
+  $("online").textContent = d.online ? "● 온라인" : `● 오프라인 (${d.age_s}s 전)`;
+  $("online").className = d.online ? "on" : "off";
+  const se = d.sensors || {};
+  $("ph").textContent = fmt(se.ph, 2);
+  $("ec").textContent = fmt(se.conductivity, 1);
+  $("tds").textContent = fmt(se.tds, 1);
+  $("sstat").textContent = se.status + (se.error ? ` (${se.error})` : "");
+  const r = d.rail || {};
+  $("pos").textContent = !r.available ? `사용 불가: ${r.error}`
+    : !r.position_known ? "모름 — 파이 /rail/ui 에서 위치 복구 필요"
+    : `${fmt(r.position_mm, 1)} mm${r.moving ? " (이동 중)" : ""}`;
+  $("station").textContent = r.station || "-";
+  const names = r.stations || [];
+  if ([...$("stations").options].map(o => o.value).join() !== names.join()) {
+    $("stations").innerHTML = names.map(n => `<option>${n}</option>`).join("");
+  }
+  const c = s.rail_commands.pi2;
+  $("cmd").textContent = c ? `${c.station} ${c.status}${c.error ? " — " + c.error : ""}` : "-";
+  $("arm").textContent = s.arm.safe ? `확인됨 (${s.arm.age_s}s 전)` : s.arm.reason;
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

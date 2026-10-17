@@ -18,6 +18,12 @@
      파이2 :8000 (server/)   스마트폰 앱      운영자 / 향후 웹
 ```
 
+### 실행 (리눅스 노트북)
+
+```bash
+./run_central.sh        # 처음엔 .venv 를 만든다. 대시보드: http://<노트북IP>:8100/ui
+```
+
 ### 실행 (데스크톱, Windows)
 
 ```powershell

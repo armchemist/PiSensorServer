@@ -23,7 +23,6 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-STATIONS = ("시약존", "실린더존", "실험존")
 STATUSES = ("PENDING", "RUNNING", "DONE", "FAILED", "ABORTED", "UNKNOWN")
 ACTIVE = ("PENDING", "RUNNING")
 FINAL = ("DONE", "FAILED", "ABORTED")
@@ -129,8 +128,11 @@ class Store:
     # --- 레일 명령 ---
 
     def create(self, device_id, station, speed_mm_s, cmd_id=None):
-        if station not in STATIONS:
-            raise CommandError(400, f"자동 이동은 {', '.join(STATIONS)} 만 가능합니다: {station!r}")
+        # 스테이션 이름은 파이가 정한다(/rail/ui). 보고가 있으면 그 목록으로 미리 거르고,
+        # 없으면 파이가 실행 시 다시 검사해 FAILED 로 돌려준다.
+        listed = (self.devices.get(device_id) or {}).get("report", {}).get("rail", {}).get("stations")
+        if listed is not None and station not in listed:
+            raise CommandError(400, f"{device_id} 에 등록되지 않은 스테이션: {station!r} (등록: {', '.join(listed)})")
         if not 0 < speed_mm_s <= MAX_SPEED_MM_S:
             raise CommandError(400, f"speed_mm_s 는 0 초과 {MAX_SPEED_MM_S} 이하")
         with self.lock:
