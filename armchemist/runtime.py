@@ -51,9 +51,11 @@ class Verdict:
 
 class ActBackend(Protocol):
     def prepare(self, cap: Capability, config: ActionConfig, execution_id: str): ...
-    def run_window(self, seconds: float, cancel: threading.Event, phase: str | None = None,
+    def run_window(self, seconds: float, cancel: threading.Event,
                    monitor: Callable[[], bool] | None = None, monitor_every: float = 0,
                    monitor_after_s: float = 0) -> PauseReceipt: ...
+
+    def move_end_pose(self) -> PauseReceipt: ...
     def pause(self) -> PauseReceipt: ...
     def finish(self): ...
     def capture(self, after: float) -> list[Frame]: ...
@@ -208,13 +210,11 @@ class Runner:
                         emit("judged", action=name, attempt=attempt, verdict=asdict(verdict))
                     check_cancel()
                     if execution_only or verdict.status == "complete":
-                        if not execution_only and pause.stop_reason == "max_time":
-                            # 완료됐지만 상한에 잘렸다. 모델별 끝 동작은 정책이 직접 마무리한다.
-                            emit("settling", action=name, attempt=attempt)
-                            pause = self.act.run_window(config.mean_duration_s, cancel, phase="settle")
-                            check_cancel()
-                            emit("settled", action=name, attempt=attempt, stopped_at=pause.stopped_at,
-                                 stop_reason=pause.stop_reason, ran_s=pause.ran_s)
+                        # 실행 중 판정·상한으로 끝 동작이 잘릴 수 있다. ACT 별 데모 끝 자세로 옮긴다.
+                        emit("end_pose_moving", action=name)
+                        pause = self.act.move_end_pose()
+                        check_cancel()
+                        emit("end_pose_reached", action=name, stopped_at=pause.stopped_at)
                         self.act.finish()
                         self.facts.update(cap.effects)
                         report["completed_actions"].append(name)

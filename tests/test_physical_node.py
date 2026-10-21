@@ -104,3 +104,22 @@ def test_policy_idle_stops_only_after_min_fraction(node_type):
     assert node._policy_idle(moved, 6.6)
     node.action_idle_s = 0  # 붓기처럼 ACT 별로 끄면 평균 시간 고정 window
     assert not node._policy_idle(moved, 20.0)
+
+
+def test_end_pose_moves_act_joints_and_keeps_gripper(node_type):
+    node = node_type.__new__(node_type)
+    node.execution_id, node.agent_state, node.agent_error = 'e1', 'paused', ''
+    node.action_name, node.end_pose_speed = 'setup_sensors', 0.5
+    node.settings = types.SimpleNamespace(raw={'actions': {'setup_sensors': {'end_pose': {'joint1': 1.0}}}})
+    node._joints = lambda: ({'joint1': 0.0, 'gripper': 0.6}, 1.0)
+    node._snapshot = lambda: {'state': node.agent_state}
+    calls = []
+    node.hold_publishers = {'leader': types.SimpleNamespace(publish=calls.append)}
+    node.hold_joint_order = {'leader': ['joint1', 'gripper']}
+    request = types.SimpleNamespace(task_info=types.SimpleNamespace(task_instruction=[json.dumps({'operation': 'end_pose', 'execution_id': 'e1'})]))
+    result = node.agent_control(request, types.SimpleNamespace())
+    assert result.success, result.message
+    point = calls[0].points[0]
+    assert point.positions == [1.0, 0.6]                  # 그리퍼는 지금 값 유지
+    assert point.time_from_start.sec == 2                 # 1 rad / 0.5 rad/s = 2초
+    assert node.agent_state == 'moving'

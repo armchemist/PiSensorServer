@@ -242,20 +242,14 @@ def test_fixed_rail_runs_same_station_and_rejects_others_before_moving():
     assert not [c for c in arm.calls if c[0] == 'run']
 
 
-def test_complete_but_cut_by_max_time_runs_settle_window_before_finish():
+def test_complete_moves_to_end_pose_before_finish():
     arm = MockAct()
-    plain = arm.run_window
-
-    def cut(seconds, cancel, phase=None, **_):
-        receipt = plain(seconds, cancel, phase)
-        return replace(receipt, stop_reason='max_time' if phase is None else 'policy_idle')
-    arm.run_window = cut
     runner = Runner(arm, MockRail('실험존'), MockJudge(), demo_actions())
     result = runner.run(compile_plan('센서', ['setup_sensors'], initial_station='실험존'))
     assert result['status'] == 'finished'
-    runs = [c for c in arm.calls if c[0] == 'run']
-    assert runs[-1][2:] == ('settle',) and arm.calls.index(runs[-1]) < arm.calls.index(('finish',))
-    assert [e['phase'] for e in result['events']].count('settled') == 1
+    assert arm.calls.index(('end_pose',)) < arm.calls.index(('finish',))
+    phases = [e['phase'] for e in result['events']]
+    assert phases.index('judged') < phases.index('end_pose_moving') < phases.index('end_pose_reached')
 
 
 def test_low_confidence_complete_is_retried_and_live_judge_stops_window():
@@ -267,7 +261,7 @@ def test_low_confidence_complete_is_retried_and_live_judge_stops_window():
             return Verdict('complete', f'c={c}', '', c)
 
     class Act(MockAct):
-        def run_window(self, seconds, cancel, phase=None, monitor=None, monitor_every=0, monitor_after_s=0):
+        def run_window(self, seconds, cancel, monitor=None, monitor_every=0, monitor_after_s=0):
             receipt = super().run_window(seconds, cancel)
             self.paused = False  # 실행 중 판정은 팔이 움직이는 동안 촬영한다
             stopped = monitor is not None and self.calls.count(('run', seconds)) > 1 and monitor()
@@ -282,4 +276,4 @@ def test_low_confidence_complete_is_retried_and_live_judge_stops_window():
     phases = [(e['phase'], e.get('stop_reason') or (e.get('verdict') or {}).get('status')) for e in result['events']]
     assert result['status'] == 'finished'
     assert ('judged', 'incomplete') in phases and ('live_judged', 'complete') in phases
-    assert ('paused', 'judged_complete') in phases and ('settling', None) not in phases
+    assert ('paused', 'judged_complete') in phases

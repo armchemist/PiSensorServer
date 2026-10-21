@@ -16,9 +16,8 @@ class MockAct:
         self.execution_id = execution_id
         self.calls.append(("prepare", cap.id))
 
-    def run_window(self, seconds, cancel: threading.Event, phase=None, monitor=None, monitor_every=0,
-                   monitor_after_s=0):
-        self.calls.append(("run", seconds) if phase is None else ("run", seconds, phase))
+    def run_window(self, seconds, cancel: threading.Event, monitor=None, monitor_every=0, monitor_after_s=0):
+        self.calls.append(("run", seconds))
         self.paused = False
         interrupted = cancel.wait(seconds)
         receipt = self.pause()
@@ -30,6 +29,10 @@ class MockAct:
         self.paused = True
         self.calls.append(("pause",))
         return PauseReceipt(self.execution_id, time.time(), True, "mock-only")
+
+    def move_end_pose(self):
+        self.calls.append(("end_pose",))
+        return self.pause()
 
     def capture(self, after):
         if not self.paused:

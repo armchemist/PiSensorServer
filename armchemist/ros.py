@@ -177,10 +177,10 @@ class PhysicalAct:
             time.sleep(0.05)
         raise ExecutionError("ACT 실행/정지 확인 시간 초과")
 
-    def run_window(self, seconds, cancel, phase=None, monitor=None, monitor_every=0, monitor_after_s=0):
+    def run_window(self, seconds, cancel, monitor=None, monitor_every=0, monitor_after_s=0):
         if cancel.is_set():
             raise Cancelled("사용자 중단")
-        self._control("run", duration_s=seconds, **({"phase": phase} if phase else {}))
+        self._control("run", duration_s=seconds)
         return self._wait_pause(seconds * self.max_factor + 30, cancel, monitor if monitor_every else None,
                                 monitor_every, monitor_after_s)
 
@@ -194,6 +194,11 @@ class PhysicalAct:
 
     def capture(self, after):
         return self.ros.capture(self.topics, after)
+
+    def move_end_pose(self):
+        # 속도 제한(기본 0.5 rad/s)으로 최대 약 3π 이동 + 정지 확인 여유
+        self._control("end_pose")
+        return self._wait_pause(30)
 
     def finish(self):
         state = self._control("finish")
