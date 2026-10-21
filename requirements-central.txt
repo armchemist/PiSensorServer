@@ -3,6 +3,11 @@ uvicorn[standard]
 # ArUco 시약 확인 (central/aruco.py). headless: GUI 없는 서버용 OpenCV, contrib 에 aruco 포함
 opencv-contrib-python-headless
 numpy
+# ACT 에이전트 (armchemist/, /agent/api)
+requests
+websocket-client
+PyYAML
+# GraphDB 사용 시: neo4j / 로봇 PC 모델 다운로드: huggingface-hub
 
 # 테스트용 (중앙 서버 실행에는 불필요)
 # pytest

@@ -1,0 +1,432 @@
+{
+  "pickup_bottle1": {
+    "model_repo": "gc22-shin/pickup_bottle1_act",
+    "model_revision": "165f487554d78d1ce36270385c0d4add29af7a76",
+    "model_subfolder": "30fps/070k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "pickdown_bottle1": {
+    "model_repo": "gc22-shin/pickdown_bottle1_act",
+    "model_revision": "9f3a71859227539fb49daac475373ae68d49f72e",
+    "model_subfolder": "30fps/030k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "pickup_cylinder": {
+    "model_repo": "Dominho/act-armchemist-pickup-cylinder-80k",
+    "model_revision": "62b34c73ca43af405d9a1a86237638696d0a03bf",
+    "model_subfolder": "",
+    "fps": 15,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "pickdown_cylinder": {
+    "model_repo": "gc22-shin/pickdown_cylinder_act",
+    "model_revision": "22b95f463ee41343839009e6a360a3cc7bd411f8",
+    "model_subfolder": "30fps/100k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "open_cap": {
+    "model_repo": "Dominho/act-armchemist-open-cap-100k",
+    "model_revision": "c8978b99a05b4f1e4f29313eb3b1980d43a47208",
+    "model_subfolder": "",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist_left": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist_right": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          12
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          12
+        ]
+      }
+    }
+  },
+  "close_cap": {
+    "model_repo": "gc22-shin/close_cap_act",
+    "model_revision": "db41ec7f8a896094846f5193a6d03d47bec248cd",
+    "model_subfolder": "30fps/100k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist_left": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist_right": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          12
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          12
+        ]
+      }
+    }
+  },
+  "pour_bottle": {
+    "model_repo": "gc22-shin/pour_bottle_act",
+    "model_revision": "55da043c754f4c5d90bac402eb69c2c1c6627f4b",
+    "model_subfolder": "30fps_excl_ambiguous/100k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "pour_cylinder": {
+    "model_repo": "gc22-shin/pour_cylinder_act",
+    "model_revision": "959cfb16d38c2b2b22a7c02c474883efd516b5c2",
+    "model_subfolder": "30fps/100k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "setup_sensors": {
+    "model_repo": "gc22-shin/setup_sensors_act",
+    "model_revision": "6cb670f6dd32eacfe77e08f5681026857dd15af7",
+    "model_subfolder": "30fps_excl_ambiguous/100k",
+    "fps": 30,
+    "input_features": {
+      "observation.images.cam_head": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_head_depth": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.images.cam_wrist": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          480,
+          640
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          6
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          6
+        ]
+      }
+    }
+  }
+}

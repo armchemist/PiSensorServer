@@ -173,10 +173,11 @@ def test_phone_ws_commands_and_video(client):
         ws.send_json({"type": "hello", "device_id": "phone1"})
         ws.send_bytes(b"not a jpeg")
         ws.send_bytes(jpeg)
-    for _ in range(50):  # 서버가 마지막 프레임을 처리할 때까지
-        if "phone1" in cm.frames:
-            break
-        time.sleep(0.02)
+        # 연결을 닫기 전에 기다린다. 먼저 닫으면 처리 중인 프레임이 끊겨 버려질 수 있다.
+        for _ in range(50):
+            if "phone1" in cm.frames:
+                break
+            time.sleep(0.02)
     r = client.get("/phone/phone1/frame")
     assert r.status_code == 200 and r.content == jpeg
     assert r.headers["content-type"] == "image/jpeg"

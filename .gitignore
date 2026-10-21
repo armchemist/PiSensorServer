@@ -28,3 +28,9 @@ rail/uplink_command.json
 
 # start_server.bat 가 남기는 서버 로그
 logs/
+
+# ACT 에이전트: 완료 판정 예시 JPEG 는 커밋한다 (위 *.jpg 예외)
+!config/decision_examples/**/*.jpg
+config/local.yaml
+# 로봇 PC 에서 받는 ACT 가중치
+models/*/

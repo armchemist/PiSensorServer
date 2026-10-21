@@ -1,0 +1,222 @@
+# 모든 상대 경로는 이 YAML 파일 위치 기준입니다. policy_path만 robot.model_root 기준입니다.
+# mode: live 전환 전 토픽/서버 주소/transfer_limits를 실장비에 맞게 보정하세요.
+# 카메라·명령 토픽은 배치 예시입니다. 모델의 cam_* 이름과 관절 순서는 학습 메타데이터 기준입니다.
+# 체크포인트는 고정된 초기 후보이며 실장비 성공률로 선정한 최적 모델이 아닙니다.
+schema_version: 1
+mode: mock
+data_dir: ../data
+server:
+  host: 127.0.0.1
+  port: 8000
+openai:
+  api_key_env: OPENAI_API_KEY
+  planner_model: gpt-6-luna
+  decision_model: gpt-6-luna
+  timeout_s: 30
+  # 완료/미완료 이진 판정. confidence는 기록만 하고 임계값을 적용하지 않는다.
+  decision_prompts: decision_prompts.json
+  # 사용자 승인 완료/미완료 예시. manifest와 JPEG는 저장소에 함께 포함합니다.
+  decision_examples: decision_examples/manifest.json
+rail:
+  central_url: http://127.0.0.1:8100
+  api_key_env: PISENSOR_API_KEY
+  device_id: pi2
+  timeout_s: 120
+graph:
+  uri: ''
+  user: neo4j
+  password_env: NEO4J_PASSWORD
+  database: neo4j
+robot:
+  rosbridge_url: ws://127.0.0.1:9090
+  model_root: ../models
+  initial_profile: omx_dual
+  hold_profile: omx_dual
+  transfer_limits: {}
+  profiles:
+    omx_left:
+      cameras:
+        cam_head: /camera/head/image_raw/compressed
+        cam_head_depth: /camera/head_depth/image_raw/compressed
+        cam_wrist: /camera/wrist_left/image_raw/compressed
+      joint_topics:
+        follower_left: /left/joint_states
+        leader_left: /left/joint_trajectory
+      joint_order:
+        leader_left:
+        - l_joint1
+        - l_joint2
+        - l_joint3
+        - l_joint4
+        - l_joint5
+        - l_gripper_joint_1
+    omx_right:
+      cameras:
+        cam_head: /camera/head/image_raw/compressed
+        cam_head_depth: /camera/head_depth/image_raw/compressed
+        cam_wrist: /camera/wrist_right/image_raw/compressed
+      joint_topics:
+        follower_right: /right/joint_states
+        leader_right: /right/joint_trajectory
+      joint_order:
+        leader_right:
+        - r_joint1
+        - r_joint2
+        - r_joint3
+        - r_joint4
+        - r_joint5
+        - r_gripper_joint_1
+    omx_dual:
+      cameras:
+        cam_head: /camera/head/image_raw/compressed
+        cam_head_depth: /camera/head_depth/image_raw/compressed
+        cam_wrist_left: /camera/wrist_left/image_raw/compressed
+        cam_wrist_right: /camera/wrist_right/image_raw/compressed
+      joint_topics:
+        follower_left: /left/joint_states
+        leader_left: /left/joint_trajectory
+        follower_right: /right/joint_states
+        leader_right: /right/joint_trajectory
+      joint_order:
+        leader_left:
+        - l_joint1
+        - l_joint2
+        - l_joint3
+        - l_joint4
+        - l_joint5
+        - l_gripper_joint_1
+        leader_right:
+        - r_joint1
+        - r_joint2
+        - r_joint3
+        - r_joint4
+        - r_joint5
+        - r_gripper_joint_1
+initial_facts:
+  left: empty
+  right: empty
+  cap: closed
+actions:
+  pickup_bottle1:
+    model_repo: gc22-shin/pickup_bottle1_act
+    model_revision: 165f487554d78d1ce36270385c0d4add29af7a76
+    model_subfolder: 30fps/070k
+    policy_path: pickup_bottle1/165f487554d78d1ce36270385c0d4add29af7a76/30fps/070k
+    robot_type: omx_left
+    fps: 30
+    mean_duration_s: 15.025757575757575
+    dataset_revision: 24165038163591741e23274171c5c66086ef579e
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_BOTTLE1/resolve/24165038163591741e23274171c5c66086ef579e/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
+  pickdown_bottle1:
+    model_repo: gc22-shin/pickdown_bottle1_act
+    model_revision: 9f3a71859227539fb49daac475373ae68d49f72e
+    model_subfolder: 30fps/030k
+    policy_path: pickdown_bottle1/9f3a71859227539fb49daac475373ae68d49f72e/30fps/030k
+    robot_type: omx_left
+    fps: 30
+    mean_duration_s: 15.020833333333334
+    dataset_revision: b6a5b1429917e9e252c11da1d87f8c5ff54028ac
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1/resolve/b6a5b1429917e9e252c11da1d87f8c5ff54028ac/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
+  pickup_cylinder:
+    model_repo: Dominho/act-armchemist-pickup-cylinder-80k
+    model_revision: 62b34c73ca43af405d9a1a86237638696d0a03bf
+    model_subfolder: ''
+    policy_path: pickup_cylinder/62b34c73ca43af405d9a1a86237638696d0a03bf
+    robot_type: omx_right
+    fps: 15
+    mean_duration_s: 10.433333333333334
+    dataset_revision: d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_CYLINDER/resolve/d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
+  pickdown_cylinder:
+    model_repo: gc22-shin/pickdown_cylinder_act
+    model_revision: 22b95f463ee41343839009e6a360a3cc7bd411f8
+    model_subfolder: 30fps/100k
+    policy_path: pickdown_cylinder/22b95f463ee41343839009e6a360a3cc7bd411f8/30fps/100k
+    robot_type: omx_right
+    fps: 30
+    mean_duration_s: 18.014
+    dataset_revision: 413e5471872e6b2d4c2e09dceae0c97a00f1a7dd
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER/resolve/413e5471872e6b2d4c2e09dceae0c97a00f1a7dd/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
+  open_cap:
+    model_repo: Dominho/act-armchemist-open-cap-100k
+    model_revision: c8978b99a05b4f1e4f29313eb3b1980d43a47208
+    model_subfolder: ''
+    policy_path: open_cap/c8978b99a05b4f1e4f29313eb3b1980d43a47208
+    robot_type: omx_dual
+    fps: 30
+    mean_duration_s: 15.004444444444445
+    dataset_revision: 7edbfa387ea9097ff50a6cae2347edab6e1ac1ec
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_OPEN_CAP/resolve/7edbfa387ea9097ff50a6cae2347edab6e1ac1ec/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist_left
+    - cam_wrist_right
+  close_cap:
+    model_repo: gc22-shin/close_cap_act
+    model_revision: db41ec7f8a896094846f5193a6d03d47bec248cd
+    model_subfolder: 30fps/100k
+    policy_path: close_cap/db41ec7f8a896094846f5193a6d03d47bec248cd/30fps/100k
+    robot_type: omx_dual
+    fps: 30
+    mean_duration_s: 15.01418439716312
+    dataset_revision: c96f4dc3684aa3919270c5ab76896c472bf7211d
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_CLOSE_CAP/resolve/c96f4dc3684aa3919270c5ab76896c472bf7211d/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist_left
+    - cam_wrist_right
+  pour_bottle:
+    # 시연용: 평균 시간 1회 실행 및 정지 확인 후 다음 ACT. 영상 판정/재실행 없음.
+    completion_mode: mean_window
+    model_repo: gc22-shin/pour_bottle_act
+    model_revision: 55da043c754f4c5d90bac402eb69c2c1c6627f4b
+    model_subfolder: 30fps_excl_ambiguous/100k
+    policy_path: pour_bottle/55da043c754f4c5d90bac402eb69c2c1c6627f4b/30fps_excl_ambiguous/100k
+    robot_type: omx_left
+    fps: 30
+    mean_duration_s: 10.05952380952381
+    dataset_revision: 1381af242e6456e58bd5b8a7d63149e1904bfa92
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_POUR_BOTTLE/resolve/1381af242e6456e58bd5b8a7d63149e1904bfa92/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
+  pour_cylinder:
+    # 시연용: 평균 시간 1회 실행 및 정지 확인 후 다음 ACT. 영상 판정/재실행 없음.
+    completion_mode: mean_window
+    model_repo: gc22-shin/pour_cylinder_act
+    model_revision: 959cfb16d38c2b2b22a7c02c474883efd516b5c2
+    model_subfolder: 30fps/100k
+    policy_path: pour_cylinder/959cfb16d38c2b2b22a7c02c474883efd516b5c2/30fps/100k
+    robot_type: omx_right
+    fps: 30
+    mean_duration_s: 15.017857142857142
+    dataset_revision: 71b3e4aedf67f6823f441b41a5803c56a5f9e192
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_POUR_CYLINDER/resolve/71b3e4aedf67f6823f441b41a5803c56a5f9e192/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
+  setup_sensors:
+    model_repo: gc22-shin/setup_sensors_act
+    model_revision: 6cb670f6dd32eacfe77e08f5681026857dd15af7
+    model_subfolder: 30fps_excl_ambiguous/100k
+    policy_path: setup_sensors/6cb670f6dd32eacfe77e08f5681026857dd15af7/30fps_excl_ambiguous/100k
+    robot_type: omx_right
+    fps: 30
+    mean_duration_s: 13.017333333333333
+    dataset_revision: 6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc
+    duration_source: https://huggingface.co/datasets/gamzadole/ARMCHEMIST_SETUP_SENSORS/resolve/6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc/meta/episodes.jsonl
+    judge_cameras:
+    - cam_head
+    - cam_wrist
