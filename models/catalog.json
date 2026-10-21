@@ -46,9 +46,9 @@
     }
   },
   "pickdown_bottle1": {
-    "model_repo": "gc22-shin/pickdown_bottle1_act",
-    "model_revision": "9f3a71859227539fb49daac475373ae68d49f72e",
-    "model_subfolder": "30fps/030k",
+    "model_repo": "gc22-shin/pickdown_bottle1_act_30fps",
+    "model_revision": "1af48f4317034ffebb52b626b1dee586701fdd9b",
+    "model_subfolder": "",
     "fps": 30,
     "input_features": {
       "observation.images.cam_head": {

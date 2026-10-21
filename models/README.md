@@ -7,7 +7,7 @@
 | ACT | 저장소 | 체크포인트 | FPS | 평균 시간(초) |
 |---|---|---|---:|---:|
 | pickup_bottle1 | gc22-shin/pickup_bottle1_act | 30fps/070k | 30 | 15.0258 |
-| pickdown_bottle1 | gc22-shin/pickdown_bottle1_act | 30fps/030k | 30 | 15.0208 |
+| pickdown_bottle1 | gc22-shin/pickdown_bottle1_act_30fps | 저장소 루트 (100k) | 30 | 15.0208 |
 | pickup_cylinder | Dominho/act-armchemist-pickup-cylinder-80k | 저장소 루트 | 15 | 10.4333 |
 | pickdown_cylinder | gc22-shin/pickdown_cylinder_act | 30fps/100k | 30 | 18.0140 |
 | open_cap | Dominho/act-armchemist-open-cap-100k | 저장소 루트 | 30 | 15.0044 |

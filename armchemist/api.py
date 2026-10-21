@@ -367,8 +367,9 @@ def _configured_app(settings, data, lock):
         from .rail import CentralRail, FixedRail
         from .ros import PhysicalAct, Rosbridge
         ros = Rosbridge(settings.robot['rosbridge_url'])
-        if config['rail'].get('fixed_station'):
-            rail = FixedRail(config['rail']['fixed_station'])
+        fixed = os.getenv("AGENT_FIXED_STATION", config['rail'].get('fixed_station'))
+        if fixed:
+            rail = FixedRail(fixed)
         else:
             rail = CentralRail(config['rail']['central_url'], api_key=settings.secret('rail', 'api_key_env'),
                                device_id=config['rail']['device_id'], timeout_s=config['rail']['timeout_s'])

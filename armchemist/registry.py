@@ -37,7 +37,7 @@ CAPABILITIES = {c.id: c for c in [
          {"left": "empty"}, {"left": "bottle"}),
     _cap("pickdown_bottle1", "시약병 내려놓기", "시약존", "left",
          "시약병이 지정된 받침에 놓여 있고 왼쪽 그리퍼가 병을 놓았다.",
-         {"left": "bottle", "cap": "closed"}, {"left": "empty"}),
+         {"left": "bottle", "cap": "closed"}, {"left": "empty"}, "gc22-shin/pickdown_bottle1_act_30fps"),
     _cap("pickup_cylinder", "실린더 잡기", "실린더존", "right",
          "오른쪽 그리퍼가 실린더를 잡아 받침에서 들어 올린 상태다.",
          {"right": "empty"}, {"right": "cylinder"},

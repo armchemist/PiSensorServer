@@ -1,6 +1,6 @@
 # 모든 상대 경로는 이 YAML 파일 위치 기준입니다. policy_path만 robot.model_root 기준입니다.
 # mode: live 전환 전 토픽/서버 주소/transfer_limits를 실장비에 맞게 보정하세요.
-# 카메라·명령 토픽은 배치 예시입니다. 모델의 cam_* 이름과 관절 순서는 학습 메타데이터 기준입니다.
+# 카메라·관절 토픽은 physical_ai_server config/omx_dual*_config.yaml 과 같은 값입니다. 모델의 cam_* 이름과 관절 순서는 학습 메타데이터 기준입니다.
 # 체크포인트는 고정된 초기 후보이며 실장비 성공률로 선정한 최적 모델이 아닙니다.
 schema_version: 1
 mode: mock
@@ -39,12 +39,12 @@ robot:
   profiles:
     omx_left:
       cameras:
-        cam_head: /camera/head/image_raw/compressed
-        cam_head_depth: /camera/head_depth/image_raw/compressed
-        cam_wrist: /camera/wrist_left/image_raw/compressed
+        cam_head: /camera1/color/image_raw/compressed
+        cam_head_depth: /camera4/image_raw/compressed
+        cam_wrist: /camera3/image_raw/compressed
       joint_topics:
-        follower_left: /left/joint_states
-        leader_left: /left/joint_trajectory
+        follower_left: /follower_left/joint_states
+        leader_left: /leader_left/joint_trajectory
       joint_order:
         leader_left:
         - l_joint1
@@ -55,12 +55,12 @@ robot:
         - l_gripper_joint_1
     omx_right:
       cameras:
-        cam_head: /camera/head/image_raw/compressed
-        cam_head_depth: /camera/head_depth/image_raw/compressed
-        cam_wrist: /camera/wrist_right/image_raw/compressed
+        cam_head: /camera1/color/image_raw/compressed
+        cam_head_depth: /camera4/image_raw/compressed
+        cam_wrist: /camera2/image_raw/compressed
       joint_topics:
-        follower_right: /right/joint_states
-        leader_right: /right/joint_trajectory
+        follower_right: /follower_right/joint_states
+        leader_right: /leader_right/joint_trajectory
       joint_order:
         leader_right:
         - r_joint1
@@ -71,15 +71,15 @@ robot:
         - r_gripper_joint_1
     omx_dual:
       cameras:
-        cam_head: /camera/head/image_raw/compressed
-        cam_head_depth: /camera/head_depth/image_raw/compressed
-        cam_wrist_left: /camera/wrist_left/image_raw/compressed
-        cam_wrist_right: /camera/wrist_right/image_raw/compressed
+        cam_head: /camera1/color/image_raw/compressed
+        cam_head_depth: /camera4/image_raw/compressed
+        cam_wrist_left: /camera2/image_raw/compressed
+        cam_wrist_right: /camera3/image_raw/compressed
       joint_topics:
-        follower_left: /left/joint_states
-        leader_left: /left/joint_trajectory
-        follower_right: /right/joint_states
-        leader_right: /right/joint_trajectory
+        follower_left: /follower_left/joint_states
+        leader_left: /leader_left/joint_trajectory
+        follower_right: /follower_right/joint_states
+        leader_right: /leader_right/joint_trajectory
       joint_order:
         leader_left:
         - l_joint1
@@ -114,10 +114,11 @@ actions:
     - cam_head
     - cam_wrist
   pickdown_bottle1:
-    model_repo: gc22-shin/pickdown_bottle1_act
-    model_revision: 9f3a71859227539fb49daac475373ae68d49f72e
-    model_subfolder: 30fps/030k
-    policy_path: pickdown_bottle1/9f3a71859227539fb49daac475373ae68d49f72e/30fps/030k
+    # 로봇 PC에 받아 둔 체크포인트(100k step). 원래 후보는 gc22-shin/pickdown_bottle1_act 30fps/030k.
+    model_repo: gc22-shin/pickdown_bottle1_act_30fps
+    model_revision: 1af48f4317034ffebb52b626b1dee586701fdd9b
+    model_subfolder: ''
+    policy_path: pickdown_bottle1/1af48f4317034ffebb52b626b1dee586701fdd9b
     robot_type: omx_left
     fps: 30
     mean_duration_s: 15.020833333333334
