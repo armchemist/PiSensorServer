@@ -88,3 +88,19 @@ def test_hold_observes_both_arms_independent_of_active_policy(node_type):
     node.hold_messages['right'] = None
     with pytest.raises(RuntimeError, match='Waiting'):
         node._joints()
+
+
+def test_policy_idle_stops_only_after_min_fraction(node_type):
+    node = node_type.__new__(node_type)
+    node.idle_stop = {'action_tolerance_rad': 0.02, 'idle_s': 1.0, 'min_fraction': 0.5, 'max_factor': 2.0}
+    node.window_duration, node.min_run_s = 20.0, 5.0
+    node.started_at = 0.0
+    action = {'leader': types.SimpleNamespace(points=[types.SimpleNamespace(positions=[0.1, 0.2])])}
+    moved = {'leader': types.SimpleNamespace(points=[types.SimpleNamespace(positions=[0.2, 0.2])])}
+    assert not node._policy_idle(action, 1.0)
+    assert not node._policy_idle(action, 2.5)   # 1초 넘게 그대로지만 평균의 절반(5초) 전
+    assert not node._policy_idle(moved, 5.5)    # 움직이면 다시 잰다
+    assert not node._policy_idle(moved, 6.0)
+    assert node._policy_idle(moved, 6.6)
+    node.action_idle_s = 0  # 붓기처럼 ACT 별로 끄면 평균 시간 고정 window
+    assert not node._policy_idle(moved, 20.0)

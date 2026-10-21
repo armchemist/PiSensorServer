@@ -15,6 +15,12 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
 class AgentPhysicalAIServer(PhysicalAIServer):
+    # 실행 window 상태(테스트는 __init__ 없이 만들기도 한다).
+    started_at = idle_ref = idle_since = ran_s = action_idle_s = None
+    min_run_s = 0
+    stop_reason = ""
+    idle_stop = {}
+
     def __init__(self, settings):
         self.settings = settings
         self.agent_state = "uninitialized"
@@ -33,6 +39,8 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.transfer_limits = settings.robot['transfer_limits']
         self.hold_tolerance = settings.robot.get('hold_tolerance_rad', 0.01)
         self.camera_max_age = settings.robot.get('camera_max_age_s', 2.0)
+        # 없으면 평균 시간 고정 window(이전 동작). 있으면 정책 출력이 멈출 때 정지하고 평균×max_factor 가 상한.
+        self.idle_stop = settings.robot.get('idle_stop') or {}
         super().__init__()
         # 단일 팔 정책을 실행할 때도 다른 팔·그리퍼를 계속 관측하고 정지한다.
         from sensor_msgs.msg import JointState
@@ -86,12 +94,32 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         if self.agent_state != "running":
             return
         if self.deadline is not None and now >= self.deadline:
+            self.stop_reason = "max_time"
             self._begin_pause()
             return
         # 모델 로딩/관측 대기를 제외하고 첫 액션 명령부터 실행 시간을 센다.
         if self.deadline is None:
+            self.started_at = now
             self.deadline = now + self.window_duration
+        if self._policy_idle(joint_msg_datas, now):
+            self.stop_reason = "policy_idle"
+            self._begin_pause()
+            return
         self._original_publish(joint_msg_datas)
+
+    def _policy_idle(self, joint_msg_datas, now):
+        """정책 출력이 idle_s 동안 action_tolerance_rad 안에 머물면 동작이 끝난 것으로 본다."""
+        # actions.<ACT>.idle_s 가 공통 idle_s 를 덮어쓴다. 0 이면 이 ACT 는 평균 시간 고정 window.
+        idle_s = self.action_idle_s if self.action_idle_s is not None else self.idle_stop.get('idle_s')
+        if not self.idle_stop or not idle_s:
+            return False
+        action = [x for name in sorted(joint_msg_datas) for x in joint_msg_datas[name].points[0].positions]
+        if self.idle_ref is None or len(action) != len(self.idle_ref) or any(
+                abs(a - r) > self.idle_stop['action_tolerance_rad'] for a, r in zip(action, self.idle_ref)):
+            self.idle_ref, self.idle_since = action, now
+            return False
+        return now - self.idle_since >= idle_s \
+            and now - self.started_at >= self.min_run_s
 
     def _inference_timer_callback(self):
         if self.agent_state != "running":
@@ -101,6 +129,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                 self.deadline is None and now - self.waiting_since > 10):
             if self.deadline is None:
                 self.agent_error = "No action published within 10 seconds"
+            self.stop_reason = self.stop_reason or "max_time"
             self._begin_pause()
             return
         try:
@@ -150,6 +179,8 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         return positions, min(stamps)
 
     def _begin_pause(self):
+        if self.agent_state == "running" and self.started_at:
+            self.ran_s = round(time.monotonic() - self.started_at, 2)
         self.agent_state = "pausing"
         self.deadline = None
         self.pause_since = time.monotonic()
@@ -219,6 +250,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         return {"execution_id": self.execution_id, "state": self.agent_state,
                 "stopped_at": self.stopped_at, "transfer_ready": self.transfer_ready,
                 "evidence": f"fresh joint states held within {self.hold_tolerance} rad for 0.3s; configured transfer limits",
+                "stop_reason": self.stop_reason, "ran_s": self.ran_s,
                 "error": self.agent_error}
 
     def agent_control(self, request, response):
@@ -245,6 +277,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                     raise ValueError('API and robot model configuration differ')
                 validate_model(self.settings, data['action'])
                 self.action_config = action
+                self.action_idle_s = self.settings.raw['actions'][data['action']].get('idle_s')
                 self._profile(action.robot_type)
                 self.execution_id = data["execution_id"]
                 self.agent_error = ""
@@ -280,7 +313,15 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                     raise ValueError("API and robot mean duration differ")
                 # 이전 window의 ACT action queue가 현재 카메라 상태를 무시하지 않게 비운다.
                 self.inference_manager.policy.reset()
-                self.window_duration, self.deadline = duration, None
+                idle_on = self.idle_stop and self.action_idle_s != 0
+                # settle: 완료 판정 뒤 상한에 잘린 끝 동작을 마무리한다. 정책이 멈추면 바로 끝낸다.
+                settle = data.get("phase") == "settle"
+                if settle and not idle_on:
+                    raise ValueError("Settle window requires idle_stop")
+                self.min_run_s = 0 if settle or not idle_on else duration * self.idle_stop['min_fraction']
+                self.window_duration = duration * (
+                    self.idle_stop['settle_factor' if settle else 'max_factor'] if idle_on else 1)
+                self.deadline, self.started_at, self.idle_ref, self.stop_reason, self.ran_s = None, None, None, "", None
                 self.waiting_since = time.monotonic()
                 self.stale_since = None
                 self.agent_state = "running"

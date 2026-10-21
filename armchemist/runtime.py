@@ -29,6 +29,8 @@ class PauseReceipt:
     stopped_at: float
     transfer_ready: bool
     evidence: str
+    stop_reason: str = ""
+    ran_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -48,7 +50,7 @@ class Verdict:
 
 class ActBackend(Protocol):
     def prepare(self, cap: Capability, config: ActionConfig, execution_id: str): ...
-    def run_window(self, seconds: float, cancel: threading.Event) -> PauseReceipt: ...
+    def run_window(self, seconds: float, cancel: threading.Event, phase: str | None = None) -> PauseReceipt: ...
     def pause(self) -> PauseReceipt: ...
     def finish(self): ...
     def capture(self, after: float) -> list[Frame]: ...
@@ -149,7 +151,8 @@ class Runner:
                     if pause.execution_id != execution_id:
                         raise ExecutionError("이전 ACT의 정지 확인 응답입니다")
                     check_cancel()
-                    emit("paused", action=name, attempt=attempt, stopped_at=pause.stopped_at)
+                    emit("paused", action=name, attempt=attempt, stopped_at=pause.stopped_at,
+                         stop_reason=pause.stop_reason, ran_s=pause.ran_s)
                     execution_only = config.completion_mode == 'mean_window'
                     if execution_only:
                         emit("execution_window_complete", action=name, attempt=attempt,
@@ -177,6 +180,13 @@ class Runner:
                         emit("judged", action=name, attempt=attempt, verdict=asdict(verdict))
                     check_cancel()
                     if execution_only or verdict.status == "complete":
+                        if not execution_only and pause.stop_reason == "max_time":
+                            # 완료됐지만 상한에 잘렸다. 모델별 끝 동작은 정책이 직접 마무리한다.
+                            emit("settling", action=name, attempt=attempt)
+                            pause = self.act.run_window(config.mean_duration_s, cancel, phase="settle")
+                            check_cancel()
+                            emit("settled", action=name, attempt=attempt, stopped_at=pause.stopped_at,
+                                 stop_reason=pause.stop_reason, ran_s=pause.ran_s)
                         self.act.finish()
                         self.facts.update(cap.effects)
                         report["completed_actions"].append(name)

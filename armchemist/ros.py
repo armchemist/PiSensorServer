@@ -120,8 +120,9 @@ class Rosbridge:
 
 class PhysicalAct:
     """추가한 /agent/control 확장이 필요하다. 기본 FINISH를 hold 성공으로 해석하지 않는다."""
-    def __init__(self, ros, initial_robot_type):
-        self.ros, self.initial_robot_type = ros, initial_robot_type
+    def __init__(self, ros, initial_robot_type, max_factor=1):
+        # 로봇 노드는 평균 시간 × max_factor 까지 실행할 수 있다(idle_stop).
+        self.ros, self.initial_robot_type, self.max_factor = ros, initial_robot_type, max_factor
         self.execution_id, self.topics, self.initialized = "idle", (), False
 
     def _control(self, operation, **payload):
@@ -150,7 +151,8 @@ class PhysicalAct:
                 or not state.get("stopped_at"):
             raise ExecutionError("ACT 정지 상태 불일치")
         return PauseReceipt(self.execution_id, state["stopped_at"],
-                            state.get("transfer_ready") is True, state.get("evidence", ""))
+                            state.get("transfer_ready") is True, state.get("evidence", ""),
+                            state.get("stop_reason") or "", state.get("ran_s"))
 
     def _wait_pause(self, timeout, cancel=None):
         deadline = time.monotonic() + timeout
@@ -166,11 +168,11 @@ class PhysicalAct:
             time.sleep(0.05)
         raise ExecutionError("ACT 실행/정지 확인 시간 초과")
 
-    def run_window(self, seconds, cancel):
+    def run_window(self, seconds, cancel, phase=None):
         if cancel.is_set():
             raise Cancelled("사용자 중단")
-        self._control("run", duration_s=seconds)
-        return self._wait_pause(seconds + 30, cancel)
+        self._control("run", duration_s=seconds, **({"phase": phase} if phase else {}))
+        return self._wait_pause(seconds * self.max_factor + 30, cancel)
 
     def pause(self):
         if not self.initialized:

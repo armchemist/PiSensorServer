@@ -239,3 +239,19 @@ def test_fixed_rail_runs_same_station_and_rejects_others_before_moving():
     result = runner.run(compile_plan('병', ['pickdown_bottle1', 'pickup_cylinder'], initial_facts=runner.facts))
     assert result['status'] != 'finished' and 'pickup_cylinder' in result['error']
     assert not [c for c in arm.calls if c[0] == 'run']
+
+
+def test_complete_but_cut_by_max_time_runs_settle_window_before_finish():
+    arm = MockAct()
+    plain = arm.run_window
+
+    def cut(seconds, cancel, phase=None):
+        receipt = plain(seconds, cancel, phase)
+        return replace(receipt, stop_reason='max_time' if phase is None else 'policy_idle')
+    arm.run_window = cut
+    runner = Runner(arm, MockRail('실험존'), MockJudge(), demo_actions())
+    result = runner.run(compile_plan('센서', ['setup_sensors'], initial_station='실험존'))
+    assert result['status'] == 'finished'
+    runs = [c for c in arm.calls if c[0] == 'run']
+    assert runs[-1][2:] == ('settle',) and arm.calls.index(runs[-1]) < arm.calls.index(('finish',))
+    assert [e['phase'] for e in result['events']].count('settled') == 1

@@ -373,7 +373,8 @@ def _configured_app(settings, data, lock):
         else:
             rail = CentralRail(config['rail']['central_url'], api_key=settings.secret('rail', 'api_key_env'),
                                device_id=config['rail']['device_id'], timeout_s=config['rail']['timeout_s'])
-        runner = Runner(PhysicalAct(ros, settings.robot['initial_profile']), rail,
+        idle_stop = settings.robot.get('idle_stop') or {}
+        runner = Runner(PhysicalAct(ros, settings.robot['initial_profile'], idle_stop.get('max_factor', 1)), rail,
                         DecisionsJudge(client, model=config['openai']['decision_model'],
                                        examples=settings.decision_examples, prompts=settings.decision_prompts),
                         settings.actions, live=True, initial_facts=config['initial_facts'])
