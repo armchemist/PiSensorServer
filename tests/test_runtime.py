@@ -228,3 +228,14 @@ def test_non_pour_cannot_skip_visual_completion():
     result = runner.run(compile_plan('pickup', ['pickup_bottle1']))
     assert result['status'] == 'failed'
     assert not arm.calls
+
+
+def test_fixed_rail_runs_same_station_and_rejects_others_before_moving():
+    from armchemist.rail import FixedRail
+    arm = MockAct()
+    runner = Runner(arm, FixedRail('시약존'), MockJudge(), demo_actions())
+    assert runner.run(compile_plan('병', ['pickup_bottle1']))['status'] == 'finished'
+    arm.calls.clear()
+    result = runner.run(compile_plan('병', ['pickdown_bottle1', 'pickup_cylinder'], initial_facts=runner.facts))
+    assert result['status'] != 'finished' and 'pickup_cylinder' in result['error']
+    assert not [c for c in arm.calls if c[0] == 'run']

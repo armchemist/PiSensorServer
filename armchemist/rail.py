@@ -87,3 +87,25 @@ class CentralRail:
     def telemetry(self):
         status = self.request("GET", "/status")
         return status.get("devices", {}).get(self.device_id, {})
+
+
+class FixedRail:
+    """레일 없이 팔만 시험한다. 한 스테이션에 서 있다고 보고, 다른 스테이션 ACT 는 실행 전에 거부한다."""
+    fixed = True
+
+    def __init__(self, station):
+        if station not in STATIONS:
+            raise ValueError(f"rail.fixed_station 은 {', '.join(STATIONS)} 중 하나여야 합니다")
+        self.current = station
+
+    def station(self):
+        return self.current
+
+    def arm_state(self, ready, evidence):
+        pass
+
+    def move(self, station, cancel):
+        raise ExecutionError(f"레일 미사용 모드({self.current}): {station} 이동 불가")
+
+    def stop(self):
+        pass

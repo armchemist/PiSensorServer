@@ -364,13 +364,15 @@ def _configured_app(settings, data, lock):
         planner = OpenAIPlanner(client, config['openai']['planner_model'])
     if mode == "live":
         from .openai_client import DecisionsJudge
-        from .rail import CentralRail
+        from .rail import CentralRail, FixedRail
         from .ros import PhysicalAct, Rosbridge
         ros = Rosbridge(settings.robot['rosbridge_url'])
-        runner = Runner(PhysicalAct(ros, settings.robot['initial_profile']),
-                        CentralRail(config['rail']['central_url'],
-                                    api_key=settings.secret('rail', 'api_key_env'),
-                                    device_id=config['rail']['device_id'], timeout_s=config['rail']['timeout_s']),
+        if config['rail'].get('fixed_station'):
+            rail = FixedRail(config['rail']['fixed_station'])
+        else:
+            rail = CentralRail(config['rail']['central_url'], api_key=settings.secret('rail', 'api_key_env'),
+                               device_id=config['rail']['device_id'], timeout_s=config['rail']['timeout_s'])
+        runner = Runner(PhysicalAct(ros, settings.robot['initial_profile']), rail,
                         DecisionsJudge(client, model=config['openai']['decision_model'],
                                        examples=settings.decision_examples, prompts=settings.decision_prompts),
                         settings.actions, live=True, initial_facts=config['initial_facts'])

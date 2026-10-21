@@ -117,6 +117,10 @@ class Runner:
             touched = True
             pause = self.act.pause()
             current_station = self.rail.station()
+            if getattr(self.rail, "fixed", False):
+                away = [n for n in plan.actions if CAPABILITIES[n].station != current_station]
+                if away:
+                    raise ExecutionError(f"레일 미사용 모드는 {current_station} ACT만 실행합니다: {', '.join(away)}")
             for name in plan.actions:
                 cap, config = CAPABILITIES[name], self.actions[name]
                 check_cancel()
