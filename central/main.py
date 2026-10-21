@@ -91,6 +91,12 @@ def ui():
     return FileResponse(Path(__file__).with_name("ui.html"))
 
 
+@app.get("/admin", include_in_schema=False)
+def admin():
+    """ACT 관리자 화면(인증 없음, LAN 전용). 탑뷰 카메라·레일 위치·태스크 실행."""
+    return FileResponse(Path(__file__).with_name("admin.html"))
+
+
 @app.get("/status")
 async def status():
     # async: 폰 연결 dict 를 바꾸는 이벤트 루프와 같은 스레드에서 읽는다.

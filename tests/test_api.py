@@ -97,3 +97,18 @@ def test_second_server_cannot_recover_first_servers_running_record(tmp_path, mon
         with pytest.raises(BlockingIOError):
             from_environment()
         assert repo.get('run', 'active')['status'] == 'running'
+
+
+def test_admin_flow_rail_station_then_single_task_run():
+    with TestClient(create_app()) as client:
+        assert client.get('/rail').json() == {'station': '시약존', 'fixed': False, 'error': None}
+        saved = client.post('/graph/drafts', json=draft(['setup_sensors'])).json()
+        plan = client.post('/plans', json={'goal': 'setup_sensors', 'actions': ['setup_sensors'],
+                                           'graphSnapshotId': saved['graphSnapshotId']}).json()
+        run = client.post('/runs', json={'plan_id': plan['id'], 'version': plan['version'],
+                                         'graphSnapshotId': plan['graphSnapshotId'], 'confirmed': True}).json()
+        for _ in range(100):
+            if client.get('/runs/' + run['id']).json()['status'] == 'finished':
+                break
+            time.sleep(0.02)
+        assert client.get('/rail').json()['station'] == '실험존'

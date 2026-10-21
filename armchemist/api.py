@@ -133,6 +133,15 @@ def create_app(*, repository=None, runner=None, planner=None, graph=None, config
             return {"mode": "mock", "rail_station": runner.rail.station(), "act_paused": runner.act.paused}
         return {"mode": "live", "rail": runner.rail.telemetry(), "act": runner.act._control("status")}
 
+    @app.get("/rail")
+    def rail_station():
+        # 이동 중이거나 위치를 모르면 station 대신 이유를 돌려준다(관리자 화면 표시용).
+        fixed = getattr(runner.rail, "fixed", False)
+        try:
+            return {"station": runner.rail.station(), "fixed": fixed, "error": None}
+        except Exception as exc:
+            return {"station": None, "fixed": fixed, "error": str(exc)}
+
     @app.get("/state")
     def world_state():
         return {"facts": runner.facts, "requires_reconciliation": runner.facts is None}
