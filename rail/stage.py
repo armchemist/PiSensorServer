@@ -226,6 +226,12 @@ def calibration():
         "calib_end_mm": _calib_end_mm,
         "position_mm": round(_position_mm, 3),
         "position_known": _position_known,
+        "saved_position_mm": (
+            round(_position_mm, 3)
+            if _calibration and isinstance(_calibration.get("position_mm"), (int, float))
+            and 0.0 <= _calibration["position_mm"] <= STROKE_MM
+            else None
+        ),
     }
 
 
