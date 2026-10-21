@@ -55,8 +55,9 @@ class Rosbridge:
         with self.cv:
             self.pending[request_id] = None
         try:
+            # rosbridge 자체 대기 시간도 맞춘다. 기본 5초라 모델 로딩(prepare)이 거절로 끝난다.
             self._send({"op": "call_service", "id": request_id, "service": service,
-                        "type": service_type, "args": args})
+                        "type": service_type, "args": args, "timeout": timeout})
             with self.cv:
                 ready = self.cv.wait_for(lambda: self.pending[request_id] is not None or self.error,
                                          timeout=timeout)
@@ -90,7 +91,9 @@ class Rosbridge:
                 messages = [self.frames.get(t, {}) for t in topics]
                 if messages and all(stamp_seconds(m) > after for m in messages):
                     times = [stamp_seconds(m) for m in messages]
-                    if max(times) - min(times) > 0.5:
+                    # 모두 정지 확인 이후 프레임이라 장면은 그대로다. 손목 usb_cam 헤더가 약 1초 늦어
+                    # (robot.camera_max_age_s 주석) 카메라 간 차이도 그만큼 난다.
+                    if max(times) - min(times) > 2.0:
                         raise ExecutionError("카메라 프레임의 촬영 시각 차이가 큽니다")
                     frames = []
                     for topic, msg in zip(topics, messages):

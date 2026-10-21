@@ -61,7 +61,7 @@ OMX 기본 `camera1`/6관절 프로파일을 양팔 모델에 그대로 사용�
 
 추가 서비스 `/agent/control`은 기존 `physical_ai_interfaces/srv/SendCommand` 타입을 재사용한다. `command=0`, `task_info.task_instruction[0]`에 JSON을 보낸다. 이는 **이 저장소가 추가한 확장**이며 upstream에 원래 있는 API라고 가정하지 않는다. 요청은 `operation`(initialize/prepare/run/pause/status/finish)과 `execution_id`를 포함한다. `run`의 `duration_s`는 로봇 PC에서 첫 명령 송신부터 계산하므로 네트워크 응답 지연으로 실행 시간이 늘어나지 않는다. 정책 추론이 늦게 끝나도 deadline 이후 생성된 액션은 송신하지 않는다.
 
-정지 시 측정한 현재 위치와 0 속도로 `JointTrajectory`를 송신한다. 관절 상태가 0.5초 이내의 새 데이터이고, 0.003 rad 범위에서 0.3초 유지되어야 정지 확인을 내린다. 카메라는 계속 구독하며, 그 이후의 ROS timestamp를 가진 프레임만 판단에 사용한다. 서버와 카메라의 ROS 시계가 일치해야 한다. 이 소프트웨어 타이머는 하드 실시간 보증이 아니다. 제어기별 hold 동작과 위 허용치는 실제 장비에서 검증해야 한다.
+정지 시 측정한 현재 위치와 0 속도로 `JointTrajectory`를 송신한다. 관절 상태가 0.5초 이내의 새 데이터이고, `robot.hold_tolerance_rad`(기본 0.01 rad) 범위에서 0.3초 유지되어야 정지 확인을 내린다. 카메라는 계속 구독하며, 그 이후의 ROS timestamp를 가진 프레임만 판단에 사용한다. 서버와 카메라의 ROS 시계가 일치해야 한다. 이 소프트웨어 타이머는 하드 실시간 보증이 아니다. 제어기별 hold 동작과 위 허용치는 실제 장비에서 검증해야 한다.
 
 ## 4. 종료 자세에서 레일 이동
 

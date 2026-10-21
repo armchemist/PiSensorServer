@@ -35,6 +35,10 @@ robot:
   model_root: ../models
   initial_profile: omx_dual
   hold_profile: omx_dual
+  # 정지 확인 허용 오차(rad). 실측: 정지 명령 직후 l_joint3 이 엔코더 2칸(0.0031) 처져 0.003 으로는 확인되지 않았다.
+  hold_tolerance_rad: 0.01
+  # ACT 실행 중 카메라 영상의 최대 나이(초). 실측: 손목 usb_cam(/camera2, /camera3) 헤더 시각이 약 1.1초 늦다.
+  camera_max_age_s: 2.0
   transfer_limits: {}
   profiles:
     omx_left:

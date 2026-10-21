@@ -23,6 +23,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.window_duration = 0
         self.deadline = None
         self.waiting_since = None
+        self.stale_since = None
         self.pause_since = None
         self.stopped_at = None
         self.hold_positions = None
@@ -30,6 +31,8 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.last_joint_stamp = 0
         self.transfer_ready = False
         self.transfer_limits = settings.robot['transfer_limits']
+        self.hold_tolerance = settings.robot.get('hold_tolerance_rad', 0.01)
+        self.camera_max_age = settings.robot.get('camera_max_age_s', 2.0)
         super().__init__()
         # 단일 팔 정책을 실행할 때도 다른 팔·그리퍼를 계속 관측하고 정지한다.
         from sensor_msgs.msg import JointState
@@ -101,10 +104,19 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             self._begin_pause()
             return
         try:
-            self._joints()
-            for msg in self.communicator.camera_topic_msgs.values():
-                if msg is None or not 0 <= self._ros_now() - self._stamp(msg) <= 1:
-                    raise RuntimeError("Stale ACT camera observation")
+            try:
+                self._joints()
+                for msg in self.communicator.camera_topic_msgs.values():
+                    if msg is None or not 0 <= self._ros_now() - self._stamp(msg) <= self.camera_max_age:
+                        raise RuntimeError("Stale ACT camera observation")
+            except RuntimeError:
+                # 긴 추론(첫 CUDA 호출 등) 직후에는 쌓인 관측 콜백보다 이 타이머가 먼저 돈다.
+                # 그 틱은 추론 없이 건너뛰고, 1초 넘게 계속 오래되면 멈춘다.
+                self.stale_since = self.stale_since or now
+                if now - self.stale_since > 1.0:
+                    raise
+                return
+            self.stale_since = None
             super()._inference_timer_callback()
             if not self.on_inference:
                 raise RuntimeError("Physical AI inference stopped unexpectedly")
@@ -141,7 +153,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.agent_state = "pausing"
         self.deadline = None
         self.pause_since = time.monotonic()
-        self.hold_positions, self.stable_since, self.stopped_at = None, None, None
+        self.hold_positions, self.settle_ref, self.stable_since, self.stopped_at = None, None, None, None
         self.transfer_ready = False
 
     def _publish_hold(self, positions):
@@ -166,7 +178,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         try:
             positions, stamp = self._joints()
             if self.hold_positions is None:
-                self.hold_positions = positions
+                self.hold_positions = self.settle_ref = positions
                 self.last_joint_stamp = stamp
                 self._publish_hold(positions)
                 return
@@ -175,11 +187,15 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             self.last_joint_stamp = stamp
             if set(positions) != set(self.hold_positions):
                 raise RuntimeError("Joint set changed during hold")
-            within = all(abs(positions[j] - self.hold_positions[j]) <= 0.003 for j in positions)
+            # 정지 명령 시점에 팔이 아직 움직이고 있으면 관성·부하로 그 위치에서 벗어나 멈춘다.
+            # 그래서 명령 위치가 아니라 최근 위치(settle_ref) 기준으로 멈췄는지 본다.
+            # 확인 이후에는 settle_ref 가 고정되어 그 자세에서 벗어나면 실패한다.
+            within = all(abs(positions[j] - self.settle_ref[j]) <= self.hold_tolerance for j in positions)
             if not within:
                 self.stable_since = None
                 if self.agent_state == "paused":
                     raise RuntimeError("Arm moved after confirmed hold")
+                self.settle_ref = positions
             elif self.stable_since is None:
                 self.stable_since = time.monotonic()
             elif time.monotonic() - self.stable_since >= 0.3:
@@ -191,7 +207,9 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                     j in positions and bounds[0] <= positions[j] <= bounds[1]
                     for j, bounds in self.transfer_limits.items()) and set(positions) <= set(self.transfer_limits)
             if self.agent_state == "pausing" and time.monotonic() - self.pause_since > 10:
-                raise RuntimeError("Hold confirmation timed out")
+                joint = max(positions, key=lambda j: abs(positions[j] - self.settle_ref[j]))
+                raise RuntimeError(f"Hold confirmation timed out ({joint} still moving, "
+                                   f"{positions[joint] - self.hold_positions[joint]:+.4f} rad from hold)")
         except Exception as exc:
             if self.agent_state == "paused" or time.monotonic() - self.pause_since > 10:
                 self.agent_error = str(exc)
@@ -200,7 +218,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
     def _snapshot(self):
         return {"execution_id": self.execution_id, "state": self.agent_state,
                 "stopped_at": self.stopped_at, "transfer_ready": self.transfer_ready,
-                "evidence": "fresh joint states held within 0.003 rad for 0.3s; configured transfer limits",
+                "evidence": f"fresh joint states held within {self.hold_tolerance} rad for 0.3s; configured transfer limits",
                 "error": self.agent_error}
 
     def agent_control(self, request, response):
@@ -210,9 +228,12 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             if operation not in ("initialize", "prepare") and data.get("execution_id") != self.execution_id:
                 raise ValueError("Execution ID mismatch")
             if operation == "initialize":
-                if self.agent_state != "uninitialized":
+                # API 서버가 재시작되면 다시 initialize 한다. 정책이 동작 중일 때만 거부하고,
+                # 그 밖에는 이전 오류를 지우고 정지 확인부터 다시 한다.
+                if self.agent_state in ("running", "preparing"):
                     raise ValueError("Already initialized; reconcile existing execution before reconnecting")
                 self._profile(data["robot_type"])
+                self.agent_error = ""
                 self._begin_pause()
             elif operation == "prepare":
                 if self.agent_state != "paused" or self.agent_error:
@@ -261,6 +282,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                 self.inference_manager.policy.reset()
                 self.window_duration, self.deadline = duration, None
                 self.waiting_since = time.monotonic()
+                self.stale_since = None
                 self.agent_state = "running"
                 self.stopped_at = None
                 self.transfer_ready = False
