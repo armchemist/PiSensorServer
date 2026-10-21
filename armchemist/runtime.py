@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Callable, Protocol
 from uuid import uuid4
 
@@ -46,11 +46,14 @@ class Verdict:
     status: str  # complete / incomplete / unknown
     detail: str
     response_id: str = ""
+    confidence: float | None = None
 
 
 class ActBackend(Protocol):
     def prepare(self, cap: Capability, config: ActionConfig, execution_id: str): ...
-    def run_window(self, seconds: float, cancel: threading.Event, phase: str | None = None) -> PauseReceipt: ...
+    def run_window(self, seconds: float, cancel: threading.Event, phase: str | None = None,
+                   monitor: Callable[[], bool] | None = None, monitor_every: float = 0,
+                   monitor_after_s: float = 0) -> PauseReceipt: ...
     def pause(self) -> PauseReceipt: ...
     def finish(self): ...
     def capture(self, after: float) -> list[Frame]: ...
@@ -70,14 +73,24 @@ class Judge(Protocol):
 class Runner:
     def __init__(self, act: ActBackend, rail: RailBackend, judge: Judge,
                  actions: dict[str, ActionConfig], *, live=False,
-                 decision_attempts=3, on_event: Callable | None = None, initial_facts=None):
+                 decision_attempts=3, on_event: Callable | None = None, initial_facts=None,
+                 min_confidence=0.0, live_judge_s=0.0):
         if not 1 <= decision_attempts <= 5:
             raise ValueError("판정 통신 시도 횟수는 1~5여야 합니다")
         self.act, self.rail, self.judge, self.actions = act, rail, judge, dict(actions)
         self.live, self.decision_attempts = live, decision_attempts
+        # min_confidence 미만의 complete 는 미완료로 본다. live_judge_s > 0 이면 실행 중에도 그 간격으로 판정한다.
+        self.min_confidence, self.live_judge_s = min_confidence, live_judge_s
         self.on_event = on_event
         self._lock = threading.Lock()
         self.facts = dict(INITIAL_FACTS if initial_facts is None else initial_facts)
+
+    def _accept(self, verdict):
+        if verdict.status == "complete" and verdict.confidence is not None \
+                and verdict.confidence < self.min_confidence:
+            return replace(verdict, status="incomplete",
+                           detail=f"{verdict.detail} (기준 {self.min_confidence} 미만)")
+        return verdict
 
     def run(self, plan: Plan, cancel=None, run_id=None):
         if not self._lock.acquire(blocking=False):
@@ -147,7 +160,21 @@ class Runner:
                     check_cancel()
                     emit("executing", action=name, attempt=attempt,
                          duration_s=config.mean_duration_s, execution_id=execution_id)
-                    pause = self.act.run_window(config.mean_duration_s, cancel)
+                    monitor = None
+                    if config.completion_mode != 'mean_window' and self.live_judge_s:
+                        def monitor(name=name, cap=cap, attempt=attempt):
+                            # 팔을 멈추지 않고 최근 프레임으로 판정한다. 판정 실패는 실행을 멈추지 않는다.
+                            try:
+                                verdict = self._accept(self.judge.check(cap, self.act.capture(after=time.time() - 3)))
+                            except Exception as exc:
+                                emit("live_judge_error", action=name, attempt=attempt, error=str(exc))
+                                return False
+                            emit("live_judged", action=name, attempt=attempt, verdict=asdict(verdict))
+                            return verdict.status == "complete"
+                    # 실행 중 판정은 평균 시간의 절반 이후부터. 그 전에는 데모에서도 끝나지 않는다.
+                    pause = self.act.run_window(config.mean_duration_s, cancel, monitor=monitor,
+                                                monitor_every=self.live_judge_s,
+                                                monitor_after_s=config.mean_duration_s / 2)
                     if pause.execution_id != execution_id:
                         raise ExecutionError("이전 ACT의 정지 확인 응답입니다")
                     check_cancel()
@@ -177,6 +204,7 @@ class Runner:
                                 if cancel.wait(min(request_attempt, 2)):
                                     check_cancel()
                         check_cancel()
+                        verdict = self._accept(verdict)
                         emit("judged", action=name, attempt=attempt, verdict=asdict(verdict))
                     check_cancel()
                     if execution_only or verdict.status == "complete":

@@ -3,6 +3,7 @@ import base64
 import json
 import threading
 import time
+from dataclasses import replace
 from uuid import uuid4
 
 import websocket
@@ -154,8 +155,9 @@ class PhysicalAct:
                             state.get("transfer_ready") is True, state.get("evidence", ""),
                             state.get("stop_reason") or "", state.get("ran_s"))
 
-    def _wait_pause(self, timeout, cancel=None):
+    def _wait_pause(self, timeout, cancel=None, monitor=None, monitor_every=0, monitor_after_s=0):
         deadline = time.monotonic() + timeout
+        next_check, judged_complete = time.monotonic() + max(monitor_after_s, monitor_every), False
         while time.monotonic() < deadline:
             if cancel is not None and cancel.is_set():
                 self._control("pause")
@@ -164,15 +166,23 @@ class PhysicalAct:
             if state.get("error"):
                 raise ExecutionError(state["error"])
             if state.get("state") == "paused":
-                return self._receipt(state)
+                receipt = self._receipt(state)
+                return replace(receipt, stop_reason="judged_complete") if judged_complete else receipt
+            if monitor and state.get("state") == "running" and time.monotonic() >= next_check:
+                # 실행 중 판정이 완료라면 정책을 멈춘다. 정지 후 판정은 호출한 쪽이 다시 한다.
+                if monitor():
+                    self._control("pause")
+                    monitor, judged_complete = None, True
+                next_check = time.monotonic() + monitor_every
             time.sleep(0.05)
         raise ExecutionError("ACT 실행/정지 확인 시간 초과")
 
-    def run_window(self, seconds, cancel, phase=None):
+    def run_window(self, seconds, cancel, phase=None, monitor=None, monitor_every=0, monitor_after_s=0):
         if cancel.is_set():
             raise Cancelled("사용자 중단")
         self._control("run", duration_s=seconds, **({"phase": phase} if phase else {}))
-        return self._wait_pause(seconds * self.max_factor + 30, cancel)
+        return self._wait_pause(seconds * self.max_factor + 30, cancel, monitor if monitor_every else None,
+                                monitor_every, monitor_after_s)
 
     def pause(self):
         if not self.initialized:

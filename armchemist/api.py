@@ -386,7 +386,9 @@ def _configured_app(settings, data, lock):
         runner = Runner(PhysicalAct(ros, settings.robot['initial_profile'], idle_stop.get('max_factor', 1)), rail,
                         DecisionsJudge(client, model=config['openai']['decision_model'],
                                        examples=settings.decision_examples, prompts=settings.decision_prompts),
-                        settings.actions, live=True, initial_facts=config['initial_facts'])
+                        settings.actions, live=True, initial_facts=config['initial_facts'],
+                        min_confidence=config['openai'].get('min_confidence', 0.0),
+                        live_judge_s=config['openai'].get('live_judge_interval_s', 0.0))
     else:
         runner = Runner(MockAct(), MockRail(), MockJudge(),
                         {name: replace(action, mean_duration_s=0.01, duration_source='mock-only')

@@ -13,7 +13,12 @@ openai:
   planner_model: gpt-6-luna
   decision_model: gpt-6-luna
   timeout_s: 30
-  # 완료/미완료 이진 판정. confidence는 기록만 하고 임계값을 적용하지 않는다.
+  # 완료/미완료 이진 판정. complete 라도 confidence 가 min_confidence 미만이면 미완료로 본다
+  # (실측: 정책이 움직이지 않았는데 0.54 로 complete).
+  min_confidence: 0.7
+  # 실행 중 판정 간격(초). 평균 시간의 절반 이후 이 간격으로 팔을 멈추지 않고 판정해 complete 면 정지한다.
+  # 정책이 성공 후에도 동작을 반복해 멈추지 않는 경우가 있다(실측 45초 내내 반복). 0 이면 끈다.
+  live_judge_interval_s: 3
   decision_prompts: decision_prompts.json
   # 사용자 승인 완료/미완료 예시. manifest와 JPEG는 저장소에 함께 포함합니다.
   decision_examples: decision_examples/manifest.json

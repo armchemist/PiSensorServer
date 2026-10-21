@@ -1,3 +1,4 @@
+import time
 import threading
 from dataclasses import replace
 
@@ -189,7 +190,7 @@ def test_pour_stops_if_not_upright_or_not_visible(outcomes):
 def test_pour_does_not_mask_errors_or_cancellation(failure):
     facts = {'left': 'empty', 'right': 'cylinder', 'cap': 'closed'}
     runner, arm, _ = build(initial_facts=facts)
-    def fail_window(seconds, cancel):
+    def fail_window(seconds, cancel, **_):
         if failure == 'execution':
             raise ExecutionError('inference or hold failed')
         if failure == 'cancel':
@@ -245,7 +246,7 @@ def test_complete_but_cut_by_max_time_runs_settle_window_before_finish():
     arm = MockAct()
     plain = arm.run_window
 
-    def cut(seconds, cancel, phase=None):
+    def cut(seconds, cancel, phase=None, **_):
         receipt = plain(seconds, cancel, phase)
         return replace(receipt, stop_reason='max_time' if phase is None else 'policy_idle')
     arm.run_window = cut
@@ -255,3 +256,30 @@ def test_complete_but_cut_by_max_time_runs_settle_window_before_finish():
     runs = [c for c in arm.calls if c[0] == 'run']
     assert runs[-1][2:] == ('settle',) and arm.calls.index(runs[-1]) < arm.calls.index(('finish',))
     assert [e['phase'] for e in result['events']].count('settled') == 1
+
+
+def test_low_confidence_complete_is_retried_and_live_judge_stops_window():
+    class Judge:
+        confidences = iter([0.5, 0.9, 0.95])  # 정지 후 1회차 0.5(미달) → 실행 중 0.9 → 정지 후 0.95
+
+        def check(self, cap, frames):
+            c = next(self.confidences)
+            return Verdict('complete', f'c={c}', '', c)
+
+    class Act(MockAct):
+        def run_window(self, seconds, cancel, phase=None, monitor=None, monitor_every=0, monitor_after_s=0):
+            receipt = super().run_window(seconds, cancel)
+            self.paused = False  # 실행 중 판정은 팔이 움직이는 동안 촬영한다
+            stopped = monitor is not None and self.calls.count(('run', seconds)) > 1 and monitor()
+            self.paused = True
+            return replace(receipt, stop_reason='judged_complete' if stopped else 'max_time')
+
+        def capture(self, after):
+            return [Frame('cam', time.time(), b'x')]
+
+    runner = Runner(Act(), MockRail('실험존'), Judge(), demo_actions(), min_confidence=0.7, live_judge_s=3)
+    result = runner.run(compile_plan('센서', ['setup_sensors'], initial_station='실험존'))
+    phases = [(e['phase'], e.get('stop_reason') or (e.get('verdict') or {}).get('status')) for e in result['events']]
+    assert result['status'] == 'finished'
+    assert ('judged', 'incomplete') in phases and ('live_judged', 'complete') in phases
+    assert ('paused', 'judged_complete') in phases and ('settling', None) not in phases

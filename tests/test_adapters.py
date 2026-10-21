@@ -112,3 +112,19 @@ def test_planner_uses_structured_output_and_refuses_missing_output():
     body = session.calls[0][2]['json']
     assert body['text']['format']['strict'] is True
     assert len(body['text']['format']['schema']['properties']['actions']['items']['enum']) == 9
+
+
+def test_live_judge_complete_pauses_running_window():
+    import threading
+    from armchemist.ros import PhysicalAct
+    act = PhysicalAct(None, 'omx_dual')
+    sent, state = [], {'state': 'running'}
+
+    def control(operation, **payload):
+        sent.append(operation)
+        if operation == 'pause':
+            state.update(state='paused')
+        return {**state, 'execution_id': 'idle', 'stopped_at': 1.0, 'stop_reason': ''}
+    act._control = control
+    receipt = act.run_window(10, threading.Event(), monitor=lambda: True, monitor_every=0.01)
+    assert sent[0] == 'run' and 'pause' in sent and receipt.stop_reason == 'judged_complete'

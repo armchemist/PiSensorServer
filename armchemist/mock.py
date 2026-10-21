@@ -16,7 +16,8 @@ class MockAct:
         self.execution_id = execution_id
         self.calls.append(("prepare", cap.id))
 
-    def run_window(self, seconds, cancel: threading.Event, phase=None):
+    def run_window(self, seconds, cancel: threading.Event, phase=None, monitor=None, monitor_every=0,
+                   monitor_after_s=0):
         self.calls.append(("run", seconds) if phase is None else ("run", seconds, phase))
         self.paused = False
         interrupted = cancel.wait(seconds)

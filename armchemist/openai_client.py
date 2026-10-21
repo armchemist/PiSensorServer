@@ -87,7 +87,7 @@ class DecisionsJudge:
                 or not isinstance(confidence, (int, float)) \
                 or not math.isfinite(confidence) or not 0 <= confidence <= 1:
             raise ExecutionError("잘못된 완료 판정 응답")
-        return Verdict(choice, f"{choice}, confidence={confidence:.4f}", response.get("id", ""))
+        return Verdict(choice, f"{choice}, confidence={confidence:.4f}", response.get("id", ""), confidence)
 
 
 class OpenAIPlanner:
