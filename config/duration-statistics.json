@@ -1,0 +1,187 @@
+{
+  "pickup_bottle1": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_PICKUP_BOTTLE1",
+    "dataset_revision": "24165038163591741e23274171c5c66086ef579e",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_BOTTLE1/resolve/24165038163591741e23274171c5c66086ef579e/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 15.025757575757575,
+        "fps": 30,
+        "episode_count": 22,
+        "total_frames": 9917,
+        "excluded_episodes": [
+          18,
+          23,
+          24
+        ],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "pickdown_bottle1": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1",
+    "dataset_revision": "b6a5b1429917e9e252c11da1d87f8c5ff54028ac",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1/resolve/b6a5b1429917e9e252c11da1d87f8c5ff54028ac/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 15.020833333333334,
+        "fps": 30,
+        "episode_count": 24,
+        "total_frames": 10815,
+        "excluded_episodes": [
+          23
+        ],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "pickup_cylinder": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_PICKUP_CYLINDER",
+    "dataset_revision": "d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_CYLINDER/resolve/d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 10.433333333333334,
+        "fps": 15,
+        "episode_count": 26,
+        "total_frames": 4069,
+        "excluded_episodes": [
+          0,
+          1,
+          5,
+          11,
+          12,
+          13,
+          30
+        ],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "pickdown_cylinder": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER",
+    "dataset_revision": "413e5471872e6b2d4c2e09dceae0c97a00f1a7dd",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER/resolve/413e5471872e6b2d4c2e09dceae0c97a00f1a7dd/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 18.014,
+        "fps": 30,
+        "episode_count": 50,
+        "total_frames": 27021,
+        "excluded_episodes": [],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "open_cap": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_OPEN_CAP",
+    "dataset_revision": "7edbfa387ea9097ff50a6cae2347edab6e1ac1ec",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_OPEN_CAP/resolve/7edbfa387ea9097ff50a6cae2347edab6e1ac1ec/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 15.004444444444445,
+        "fps": 30,
+        "episode_count": 45,
+        "total_frames": 20256,
+        "excluded_episodes": [
+          3,
+          35,
+          42,
+          48
+        ],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "close_cap": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_CLOSE_CAP",
+    "dataset_revision": "c96f4dc3684aa3919270c5ab76896c472bf7211d",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_CLOSE_CAP/resolve/c96f4dc3684aa3919270c5ab76896c472bf7211d/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 15.01418439716312,
+        "fps": 30,
+        "episode_count": 47,
+        "total_frames": 21170,
+        "excluded_episodes": [
+          27,
+          28
+        ],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "pour_bottle": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_POUR_BOTTLE",
+    "dataset_revision": "1381af242e6456e58bd5b8a7d63149e1904bfa92",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_POUR_BOTTLE/resolve/1381af242e6456e58bd5b8a7d63149e1904bfa92/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 10.05952380952381,
+        "fps": 30,
+        "episode_count": 28,
+        "total_frames": 8450,
+        "excluded_episodes": [
+          9,
+          19
+        ],
+        "statistic": "mean_episode_frames/fps"
+      },
+      "all_episodes": {
+        "mean_duration_s": 10.056666666666667,
+        "fps": 30,
+        "episode_count": 30,
+        "total_frames": 9051,
+        "excluded_episodes": [],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "pour_cylinder": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_POUR_CYLINDER",
+    "dataset_revision": "71b3e4aedf67f6823f441b41a5803c56a5f9e192",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_POUR_CYLINDER/resolve/71b3e4aedf67f6823f441b41a5803c56a5f9e192/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 15.017857142857142,
+        "fps": 30,
+        "episode_count": 28,
+        "total_frames": 12615,
+        "excluded_episodes": [
+          0,
+          1
+        ],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  },
+  "setup_sensors": {
+    "dataset_repo": "gamzadole/ARMCHEMIST_SETUP_SENSORS",
+    "dataset_revision": "6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc",
+    "duration_source": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_SETUP_SENSORS/resolve/6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc/meta/episodes.jsonl",
+    "variants": {
+      "filtered": {
+        "mean_duration_s": 13.017333333333333,
+        "fps": 30,
+        "episode_count": 25,
+        "total_frames": 9763,
+        "excluded_episodes": [
+          12,
+          13,
+          17,
+          18,
+          25
+        ],
+        "statistic": "mean_episode_frames/fps"
+      },
+      "all_episodes": {
+        "mean_duration_s": 13.020000000000001,
+        "fps": 30,
+        "episode_count": 30,
+        "total_frames": 11718,
+        "excluded_episodes": [],
+        "statistic": "mean_episode_frames/fps"
+      }
+    }
+  }
+}

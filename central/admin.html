@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARMchemist 관리자</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 1em auto; padding: 0 16px; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: .6em 1em; margin: .8em 0; }
+  h2 { font-size: 1em; margin: .2em 0 .5em; }
+  .off { color: #b00; } .on { color: #080; } .muted { color: #777; font-size: .9em; }
+  button { margin: .2em .3em .2em 0; padding: .35em .8em; }
+  #cam { width: 100%; max-height: 420px; object-fit: contain; background: #111; display: block; border-radius: 4px; }
+  .stations span { display: inline-block; padding: .3em .9em; margin-right: .3em; border-radius: 1em; background: #eee; color: #888; }
+  .stations span.here { background: #2a6; color: #fff; font-weight: 700; }
+  .tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .4em; }
+  .tasks button { margin: 0; text-align: left; line-height: 1.3; }
+  .tasks button small { display: block; color: #666; }
+  .tasks button:disabled small { color: #a55; }
+  .pill { display: inline-block; padding: .1em .6em; border-radius: 1em; font-weight: 600; background: #eee; }
+  .finished { background: #cfead0; color: #060; } .failed, .unknown { background: #f9d0d0; color: #900; }
+  .running, .queued { background: #d6e6fb; color: #004a9f; } .cancelled { background: #fde9c4; color: #7a4b00; }
+  #msg, #run-error { white-space: pre-wrap; color: #900; }
+  #cancel-btn { color: #b00; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: .2em .6em .2em 0; font-size: .9em; border-top: 1px solid #eee; vertical-align: top; }
+</style>
+</head>
+<body>
+<h1>ARMchemist 관리자</h1>
+<p id="conn" class="muted">연결 중…</p>
+<p id="msg"></p>
+
+<section>
+  <h2>탑뷰 카메라</h2>
+  <img id="cam" alt="탑뷰 카메라 (web_video_server :8080)">
+</section>
+
+<section>
+  <h2>레일 위치</h2>
+  <div class="stations" id="stations"></div>
+  <p id="rail-note" class="muted"></p>
+</section>
+
+<section>
+  <h2>물체 상태</h2>
+  <p>현재: <b id="facts">-</b></p>
+  <label>왼손 <select id="f-left"><option>empty</option><option>bottle</option></select></label>
+  <label>오른손 <select id="f-right"><option>empty</option><option>cap</option><option>cylinder</option></select></label>
+  <label>뚜껑 <select id="f-cap"><option>closed</option><option>open</option></select></label>
+  <button id="reconcile-btn">실제 상태로 등록</button>
+</section>
+
+<section>
+  <h2>태스크</h2>
+  <p class="muted">누르면 해당 스테이션으로 레일을 옮긴 뒤 ACT 를 실행합니다.</p>
+  <div class="tasks" id="tasks"></div>
+</section>
+
+<section>
+  <h2>실행 <span id="status" class="pill">-</span> <span id="run-title"></span></h2>
+  <button id="cancel-btn" disabled>중단</button>
+  <span class="muted">소프트웨어 정지입니다. 비상정지를 대신하지 않습니다.</span>
+  <p id="run-error"></p>
+  <table><tbody id="events"></tbody></table>
+</section>
+
+<script>
+const API = '/agent/api';
+const STATIONS = ['시약존', '실린더존', '실험존'];
+const $ = id => document.getElementById(id);
+let caps = [], facts = null, rail = {}, runId = null, active = false;
+
+// 탑뷰 = RealSense 컬러. 영상은 로봇 노드와 함께 뜨는 web_video_server(:8080)가 보낸다.
+$('cam').src = `http://${location.hostname}:8080/stream?topic=/camera1/color/image_raw&type=mjpeg&quality=60`;
+$('cam').onerror = () => { $('cam').alt = '카메라 영상 없음 (로봇 노드·web_video_server 확인)'; };
+
+async function call(method, path, body) {
+  const res = await fetch(API + path, {method, headers: {'Content-Type': 'application/json'},
+                                       body: body === undefined ? undefined : JSON.stringify(body)});
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  if (!res.ok) throw new Error((data && data.detail) || text || res.status);
+  return data;
+}
+const show = e => { $('msg').textContent = e ? String(e.message || e) : ''; };
+
+async function refresh() {
+  const [health, state, r] = await Promise.all([call('GET', '/health'), call('GET', '/state'), call('GET', '/rail')]);
+  facts = state.facts; rail = r;
+  $('conn').innerHTML = `모드 <b class="${health.mode === 'live' ? 'off' : 'on'}">${health.mode}</b>` +
+    (rail.fixed ? ' · 레일 미사용 모드' : '');
+  $('stations').innerHTML = STATIONS.map(s => `<span class="${s === rail.station ? 'here' : ''}">${s}</span>`).join('');
+  $('rail-note').textContent = rail.error ? '위치 확인 불가: ' + rail.error
+    : rail.fixed ? '레일 미사용 모드: 이 스테이션 태스크만 실행됩니다' : '';
+  $('facts').textContent = facts ? `왼손 ${facts.left} · 오른손 ${facts.right} · 뚜껑 ${facts.cap}`
+                                 : '불명확 — 실제 상태를 등록하세요';
+  if (facts && document.activeElement?.tagName !== 'SELECT')
+    for (const k of ['left', 'right', 'cap']) $('f-' + k).value = facts[k];
+  renderTasks();
+}
+
+function blocker(c) {
+  if (!c.configured) return '설정 없음';
+  if (active) return '다른 실행 중';
+  if (!facts) return '물체 상태 등록 필요';
+  const missing = c.requires.filter(([k, v]) => facts[k] !== v).map(([k, v]) => `${k}=${v}`);
+  if (missing.length) return '필요: ' + missing.join(', ');
+  if (rail.fixed && c.station !== rail.station) return `레일 미사용 모드(${rail.station})`;
+  return '';
+}
+
+function renderTasks() {
+  $('tasks').innerHTML = '';
+  for (const c of caps) {
+    const why = blocker(c);
+    const b = document.createElement('button');
+    b.innerHTML = `<b>${c.description}</b><small>${c.station} · ${c.id}</small>` + (why ? `<small>${why}</small>` : '');
+    b.disabled = !!why;
+    b.onclick = guard(() => runTask(c));
+    $('tasks').appendChild(b);
+  }
+}
+
+async function runTask(c) {
+  const move = rail.station === c.station ? '' : `\n레일: ${rail.station || '?'} → ${c.station}`;
+  if (!confirm(`로봇이 움직입니다.\n${c.description} (${c.id})${move}\n실행할까요?`)) return;
+  // 실험 노드 id 를 매번 새로 만든다. 같은 구성이면 계획 id 가 같아져 /runs 가 이전 실행을 돌려주기 때문.
+  const nonce = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const saved = await call('POST', '/graph/drafts', {relationships: [], nodes: [{
+    id: 'experiment-admin-' + nonce, labels: ['Experiment'],
+    properties: {name: '관리자 실행', kind: 'draft', description: c.id, actions: [c.id]}}]});
+  const plan = await call('POST', '/plans', {goal: c.id, actions: [c.id], graphSnapshotId: saved.graphSnapshotId});
+  const run = await call('POST', '/runs', {plan_id: plan.id, version: plan.version,
+                                           graphSnapshotId: plan.graphSnapshotId, confirmed: true});
+  runId = run.id; $('run-title').textContent = c.description;
+  pollRun();
+}
+
+function eventText(e) {
+  return [e.action, e.attempt && `시도 ${e.attempt}`, e.station, e.stop_reason && `정지 이유 ${e.stop_reason}`,
+          e.ran_s != null && `${e.ran_s}초`, e.verdict && `판정 ${e.verdict.status} (${e.verdict.detail})`, e.error]
+    .filter(Boolean).join(' · ');
+}
+
+async function pollRun() {
+  if (!runId) return;
+  let r;
+  try { r = await call('GET', '/runs/' + runId); } catch (e) { show(e); setTimeout(pollRun, 2000); return; }
+  active = r.status === 'queued' || r.status === 'running';
+  $('status').textContent = r.status; $('status').className = 'pill ' + r.status;
+  $('run-error').textContent = r.error ? r.error + (r.stop_errors?.length ? `\n정지 오류: ${r.stop_errors.join(', ')}` : '') : '';
+  $('events').innerHTML = r.events.map(e =>
+    `<tr><td>${new Date(e.at * 1000).toLocaleTimeString()}</td><td><b>${e.phase}</b></td><td>${eventText(e)}</td></tr>`).join('');
+  $('cancel-btn').disabled = !active;
+  renderTasks();
+  if (active) setTimeout(pollRun, 1000); else refresh().catch(show);
+}
+
+const guard = fn => async () => { show(); try { await fn(); } catch (e) { show(e); refresh().catch(() => {}); } };
+$('reconcile-btn').onclick = guard(async () => {
+  await call('POST', '/state/reconcile', {observed: true,
+    facts: {left: $('f-left').value, right: $('f-right').value, cap: $('f-cap').value}});
+  await refresh();
+});
+$('cancel-btn').onclick = guard(async () => { if (runId) await call('POST', `/runs/${runId}/cancel`); });
+
+(async () => {
+  try {
+    caps = (await call('GET', '/capabilities')).actions;
+    await refresh();
+    setInterval(() => { if (!active) refresh().catch(show); }, 3000);  // 레일 위치·상태 갱신
+  } catch (e) { $('conn').textContent = '에이전트 API에 연결하지 못했습니다'; show(e); }
+})();
+</script>
+</body>
+</html>

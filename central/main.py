@@ -45,14 +45,29 @@ verifier = aruco.Verifier(aruco_cfg["reagents"], aruco_cfg["confirm_frames"], ar
 _verify_pushed = None  # 검증이 마지막으로 폰에 보낸 (state, message)
 
 
+# ACT 에이전트(armchemist/)를 같은 프로세스의 /agent/api/* 로 띄운다. 레일은 기존처럼 이 서버의
+# HTTP API(rail.central_url)로 부른다. 에이전트 설정 오류나 live 모드 로봇 미연결이어도
+# 레일·센서 중계는 계속 떠야 하므로 실패하면 에이전트만 끈다.
+try:
+    from armchemist.api import from_environment
+    agent_app = from_environment()
+except Exception as exc:
+    agent_app = None
+    print(f"[agent] 비활성: {type(exc).__name__}: {exc}", flush=True)
+
+
 @contextlib.asynccontextmanager
 async def _lifespan(app):
     task = asyncio.create_task(_verify_ticker())
-    yield
+    # mount 한 앱의 lifespan 은 Starlette 가 부르지 않는다. 종료 시 실행 취소·락 해제를 위해 직접 감싼다.
+    async with agent_app.router.lifespan_context(agent_app) if agent_app else contextlib.nullcontext():
+        yield
     task.cancel()
 
 
 app = FastAPI(title="ARMchemist Central", version="0.2.0", lifespan=_lifespan)
+if agent_app:
+    app.mount("/agent", agent_app)
 
 
 def _cmd_call(fn, *args, **kwargs):
@@ -74,6 +89,12 @@ def health():
 def ui():
     """간단한 대시보드. /status 를 1초마다 읽는다."""
     return FileResponse(Path(__file__).with_name("ui.html"))
+
+
+@app.get("/admin", include_in_schema=False)
+def admin():
+    """ACT 관리자 화면(인증 없음, LAN 전용). 탑뷰 카메라·레일 위치·태스크 실행."""
+    return FileResponse(Path(__file__).with_name("admin.html"))
 
 
 @app.get("/status")

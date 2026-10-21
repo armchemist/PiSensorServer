@@ -1,0 +1,437 @@
+{
+  "schema_version": 1,
+  "review_sha256": "7fcc331dd9ebaa63aaa6c8c2b2e938b245fb1c47187b8795bfb188e4e9456350",
+  "description": "사용자 리뷰로 채택한 완료·미완료 참조 이미지. 실장비 성공률 검증과는 별개다.",
+  "actions": [
+    {
+      "action_id": "pickup_bottle1",
+      "question": "시약병이 받침에서 떨어져 올라와 있고 그리퍼가 병을 잡고 있는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_PICKUP_BOTTLE1",
+      "dataset_revision": "24165038163591741e23274171c5c66086ef579e",
+      "examples": [
+        {
+          "id": "pickup_bottle1--lifted",
+          "label": "complete",
+          "description": "헤드 영상에서 병이 원래 받침 위치를 벗어나 그리퍼 아래에 들려 있다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:33.009993+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 446,
+              "timestamp_s": 14.8667,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_BOTTLE1/resolve/24165038163591741e23274171c5c66086ef579e/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "b98ab5c2fa407e0348b3fa7256603eb96b29d9e67567e924be1bc4e3184db9d1",
+              "path": "images/pickup_bottle1--lifted--cam_head--446.jpg"
+            }
+          ]
+        },
+        {
+          "id": "pickup_bottle1--flagged-not-started",
+          "label": "incomplete",
+          "description": "약 1.7초에 끝난 영상에서 병은 받침에 남아 있고 그리퍼는 떨어져 있다. 제외 플래그 때문이 아니라 보이는 상태로 골랐다.",
+          "episode": 23,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:35.722767+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 49,
+              "timestamp_s": 1.6333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_BOTTLE1/resolve/24165038163591741e23274171c5c66086ef579e/videos/chunk-000/observation.images.cam_head/episode_000023.mp4",
+              "sha256": "9de56ae726df1edea03320d21678c5d4341a8f8bdf51517d94dc19f90585df53",
+              "path": "images/pickup_bottle1--flagged-not-started--cam_head--49.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "action_id": "pickdown_bottle1",
+      "question": "시약병이 지정 받침에 놓여 있고 그리퍼가 병에서 떨어져 있는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1",
+      "dataset_revision": "b6a5b1429917e9e252c11da1d87f8c5ff54028ac",
+      "examples": [
+        {
+          "id": "pickdown_bottle1--released",
+          "label": "complete",
+          "description": "헤드에는 받침의 병, 손목에는 빈 그리퍼가 보인다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:40.244836+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 446,
+              "timestamp_s": 14.8667,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1/resolve/b6a5b1429917e9e252c11da1d87f8c5ff54028ac/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "44449973fd4d827c184287260120ab4a06ec6ca0ef4b6dc7afe09b930bd943b4",
+              "path": "images/pickdown_bottle1--released--cam_head--446.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 446,
+              "timestamp_s": 14.8667,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1/resolve/b6a5b1429917e9e252c11da1d87f8c5ff54028ac/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "01da89b0c1cf7387f1655ef70fefb8f21ae49dd24746f071df70b8f6353b259b",
+              "path": "images/pickdown_bottle1--released--cam_wrist--446.jpg"
+            }
+          ]
+        },
+        {
+          "id": "pickdown_bottle1--before-placement",
+          "label": "incomplete",
+          "description": "병이 그리퍼 아래에 들려 있으며 아직 내려놓기 전이다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:42.967900+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1/resolve/b6a5b1429917e9e252c11da1d87f8c5ff54028ac/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "7a81e976999d8b9961b4e543963f3098039760cedf07fb18e13756bbfb913c2a",
+              "path": "images/pickdown_bottle1--before-placement--cam_head--0.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_BOTTLE1/resolve/b6a5b1429917e9e252c11da1d87f8c5ff54028ac/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "203d5abe9a01e6b2e44d97529a364aa17d41dec6d59d285696a145162971e820",
+              "path": "images/pickdown_bottle1--before-placement--cam_wrist--0.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "action_id": "pickup_cylinder",
+      "question": "실린더가 받침에서 들어 올려져 그리퍼에 잡혀 있는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_PICKUP_CYLINDER",
+      "dataset_revision": "d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351",
+      "examples": [
+        {
+          "id": "pickup_cylinder--lifted",
+          "label": "complete",
+          "description": "헤드에서 팔이 복귀했고 손목에는 그리퍼 사이 실린더가 보인다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:50.794654+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 148,
+              "timestamp_s": 9.8667,
+              "fps": 15.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_CYLINDER/resolve/d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "bb026038e1107e32e77eabf724cb0133df2023d41472b4c13f3685cb96a81103",
+              "path": "images/pickup_cylinder--lifted--cam_head--148.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 148,
+              "timestamp_s": 9.8667,
+              "fps": 15.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_CYLINDER/resolve/d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "f48184959312cc24ff50cd0135f65dbec5cc919c6be1d70c19e5c4d301c5c4d7",
+              "path": "images/pickup_cylinder--lifted--cam_wrist--148.jpg"
+            }
+          ]
+        },
+        {
+          "id": "pickup_cylinder--flagged-not-started",
+          "label": "incomplete",
+          "description": "헤드에서 잡기 동작이 진행되지 않았고 손목에서도 그리퍼가 비어 있다.",
+          "episode": 1,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:52.204685+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 71,
+              "timestamp_s": 4.7333,
+              "fps": 15.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_CYLINDER/resolve/d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351/videos/chunk-000/observation.images.cam_head/episode_000001.mp4",
+              "sha256": "bfa7a92a597184654a0f23b2c6a05ec544f95a6892d5118482d49d7dc614bb48",
+              "path": "images/pickup_cylinder--flagged-not-started--cam_head--71.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 71,
+              "timestamp_s": 4.7333,
+              "fps": 15.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKUP_CYLINDER/resolve/d117fcc1a9c8a63f32235b2b9cc5702b8c4d8351/videos/chunk-000/observation.images.cam_wrist/episode_000001.mp4",
+              "sha256": "88a7b9a0e1b3b72087e73743511fa8fb2f57124fd36c258b1215023b5c4721d8",
+              "path": "images/pickup_cylinder--flagged-not-started--cam_wrist--71.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "action_id": "pickdown_cylinder",
+      "question": "실린더가 지정 받침에 놓여 있고 그리퍼가 실린더에서 떨어져 있는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER",
+      "dataset_revision": "413e5471872e6b2d4c2e09dceae0c97a00f1a7dd",
+      "examples": [
+        {
+          "id": "pickdown_cylinder--released",
+          "label": "complete",
+          "description": "헤드에서 실린더 위치와 물러난 팔, 손목에서 빈 그리퍼를 함께 볼 수 있다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:37:56.404522+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 535,
+              "timestamp_s": 17.8333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER/resolve/413e5471872e6b2d4c2e09dceae0c97a00f1a7dd/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "0b3833f12ee2e039cfaa216b0354de17eb8c8760454a38bdf8e6727405ef7428",
+              "path": "images/pickdown_cylinder--released--cam_head--535.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 535,
+              "timestamp_s": 17.8333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER/resolve/413e5471872e6b2d4c2e09dceae0c97a00f1a7dd/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "ee0b754e38f9f49f0032852d067532adfd9929b38bd369e84d29fd4b37d77e33",
+              "path": "images/pickdown_cylinder--released--cam_wrist--535.jpg"
+            }
+          ]
+        },
+        {
+          "id": "pickdown_cylinder--before-placement",
+          "label": "incomplete",
+          "description": "사용자 요청대로 실패 라벨 대신 내려놓기 시작 전 상태를 선택했다. 손목에서 실린더를 잡고 있다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:38:02.454851+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER/resolve/413e5471872e6b2d4c2e09dceae0c97a00f1a7dd/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "59e88d3a30effeede433d8810b1ea971f301728215781412ff1a251639931683",
+              "path": "images/pickdown_cylinder--before-placement--cam_head--0.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_PICKDOWN_CYLINDER/resolve/413e5471872e6b2d4c2e09dceae0c97a00f1a7dd/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "6d9965124c59f8bf0770f314068fe5021398a701340e324cfd3903a2464cf5d9",
+              "path": "images/pickdown_cylinder--before-placement--cam_wrist--0.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "action_id": "open_cap",
+      "question": "뚜껑이 병에서 분리되어 별도 그리퍼에 잡혀 있고 병 입구가 열린 것을 확인할 수 있는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_OPEN_CAP",
+      "dataset_revision": "7edbfa387ea9097ff50a6cae2347edab6e1ac1ec",
+      "examples": [
+        {
+          "id": "open_cap--separated",
+          "label": "complete",
+          "description": "손목에 노란 뚜껑이 별도로 잡혀 있고 헤드에서 양쪽 그리퍼가 떨어져 있다.",
+          "episode": 30,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:38:20.795032+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 445,
+              "timestamp_s": 14.8333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_OPEN_CAP/resolve/7edbfa387ea9097ff50a6cae2347edab6e1ac1ec/videos/chunk-000/observation.images.cam_head/episode_000030.mp4",
+              "sha256": "47f73dbbd112c69e594ca6489758baf1561f0cf22c3428f92fd05ac4edd4c43c",
+              "path": "images/open_cap--separated--cam_head--445.jpg"
+            },
+            {
+              "camera": "cam_wrist_left",
+              "frame_index": 445,
+              "timestamp_s": 14.8333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_OPEN_CAP/resolve/7edbfa387ea9097ff50a6cae2347edab6e1ac1ec/videos/chunk-000/observation.images.cam_wrist_left/episode_000030.mp4",
+              "sha256": "f5233145db778b750a80f48b8fa66181243dfa25e29593b93c0e202e1f352339",
+              "path": "images/open_cap--separated--cam_wrist_left--445.jpg"
+            }
+          ]
+        },
+        {
+          "id": "open_cap--before-opening",
+          "label": "incomplete",
+          "description": "뚜껑용 그리퍼가 비어 있고 헤드에서 병 위의 노란 뚜껑이 보인다.",
+          "episode": 30,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:38:23.792549+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_OPEN_CAP/resolve/7edbfa387ea9097ff50a6cae2347edab6e1ac1ec/videos/chunk-000/observation.images.cam_head/episode_000030.mp4",
+              "sha256": "f8090f478d77d3f9dbf3efdb351a925f46b3349487b1df4191ba7fb6b51197b7",
+              "path": "images/open_cap--before-opening--cam_head--0.jpg"
+            },
+            {
+              "camera": "cam_wrist_left",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_OPEN_CAP/resolve/7edbfa387ea9097ff50a6cae2347edab6e1ac1ec/videos/chunk-000/observation.images.cam_wrist_left/episode_000030.mp4",
+              "sha256": "e9468aac1843e5286a6fee5bd2ed1debfdd8b9a457adfed43af481b9760667da",
+              "path": "images/open_cap--before-opening--cam_wrist_left--0.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "action_id": "close_cap",
+      "question": "뚜껑이 병에 다시 결합되어 있고 뚜껑을 잡던 그리퍼가 놓은 것이 보이는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_CLOSE_CAP",
+      "dataset_revision": "c96f4dc3684aa3919270c5ab76896c472bf7211d",
+      "examples": [
+        {
+          "id": "close_cap--released-cap",
+          "label": "complete",
+          "description": "헤드에 병 위 노란 뚜껑이 보이고 뚜껑을 잡던 손목 시점은 빈 그리퍼다.",
+          "episode": 30,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:38:55.699024+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 445,
+              "timestamp_s": 14.8333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_CLOSE_CAP/resolve/c96f4dc3684aa3919270c5ab76896c472bf7211d/videos/chunk-000/observation.images.cam_head/episode_000030.mp4",
+              "sha256": "ebb1838b72a16d5a1ddefaeb0efb1b3e841324a4c9b70c974e673c8384268120",
+              "path": "images/close_cap--released-cap--cam_head--445.jpg"
+            },
+            {
+              "camera": "cam_wrist_left",
+              "frame_index": 445,
+              "timestamp_s": 14.8333,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_CLOSE_CAP/resolve/c96f4dc3684aa3919270c5ab76896c472bf7211d/videos/chunk-000/observation.images.cam_wrist_left/episode_000030.mp4",
+              "sha256": "49c90484bd14aa41d67423379d8c9ffe07e41653bb301617a12d141044ab4edc",
+              "path": "images/close_cap--released-cap--cam_wrist_left--445.jpg"
+            }
+          ]
+        },
+        {
+          "id": "close_cap--before-closing",
+          "label": "incomplete",
+          "description": "손목 영상에서 그리퍼가 아직 분리된 노란 뚜껑을 잡고 있다.",
+          "episode": 30,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:38:53.684980+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_CLOSE_CAP/resolve/c96f4dc3684aa3919270c5ab76896c472bf7211d/videos/chunk-000/observation.images.cam_head/episode_000030.mp4",
+              "sha256": "690bc1cdace0e89400fbcd5c52317ed158402ae12f53aaa8405ce81788be7f10",
+              "path": "images/close_cap--before-closing--cam_head--0.jpg"
+            },
+            {
+              "camera": "cam_wrist_left",
+              "frame_index": 0,
+              "timestamp_s": 0.0,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_CLOSE_CAP/resolve/c96f4dc3684aa3919270c5ab76896c472bf7211d/videos/chunk-000/observation.images.cam_wrist_left/episode_000030.mp4",
+              "sha256": "c202739852850856bc245bd03336f06641134362a0707c96398ece17839287c5",
+              "path": "images/close_cap--before-closing--cam_wrist_left--0.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "action_id": "setup_sensors",
+      "question": "센서가 측정 용기 안에 놓여 있고 그리퍼가 센서를 놓은 것이 보이는가?",
+      "dataset_repo": "gamzadole/ARMCHEMIST_SETUP_SENSORS",
+      "dataset_revision": "6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc",
+      "examples": [
+        {
+          "id": "setup_sensors--released-sensor",
+          "label": "complete",
+          "description": "헤드에 용기 쪽 센서·케이블이 남아 있고 손목에서 그리퍼가 비어 있다. 마지막 구간에 사람 손이 들어오기 전인 11.5초를 선택했다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:39:26.925088+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 345,
+              "timestamp_s": 11.5,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_SETUP_SENSORS/resolve/6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "b0831401b39020f727f9f3828cd2dcf55560a0f9628880341663d21b8fae2c0b",
+              "path": "images/setup_sensors--released-sensor--cam_head--345.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 345,
+              "timestamp_s": 11.5,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_SETUP_SENSORS/resolve/6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "638840a14585782c9d965c2220a0a8fec3c441066f585de2abe43cd0588fbf80",
+              "path": "images/setup_sensors--released-sensor--cam_wrist--345.jpg"
+            }
+          ]
+        },
+        {
+          "id": "setup_sensors--holding-sensor",
+          "label": "incomplete",
+          "description": "손목에서 센서 몸체를 잡고 있으며 헤드에서 아직 설치 위치로 이동 중이다.",
+          "episode": 20,
+          "review_status": "approved",
+          "reviewed_at": "2026-10-17T07:39:32.493675+00:00",
+          "images": [
+            {
+              "camera": "cam_head",
+              "frame_index": 129,
+              "timestamp_s": 4.3,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_SETUP_SENSORS/resolve/6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc/videos/chunk-000/observation.images.cam_head/episode_000020.mp4",
+              "sha256": "2d7f64c8fd26432cc8b25a6a02f2140c7f258c58467c5ab82a32f834598bbcd5",
+              "path": "images/setup_sensors--holding-sensor--cam_head--129.jpg"
+            },
+            {
+              "camera": "cam_wrist",
+              "frame_index": 129,
+              "timestamp_s": 4.3,
+              "fps": 30.0,
+              "source_url": "https://huggingface.co/datasets/gamzadole/ARMCHEMIST_SETUP_SENSORS/resolve/6a4ef58ef3cf8ac5b2c3d85328ebf1042c7e04fc/videos/chunk-000/observation.images.cam_wrist/episode_000020.mp4",
+              "sha256": "712c413b0f56ec9addc62f722e1b62e511c13435e891e52a1a7c1af0902a0269",
+              "path": "images/setup_sensors--holding-sensor--cam_wrist--129.jpg"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
