@@ -204,6 +204,10 @@ class PhysicalAct:
         self._control("end_pose")
         return self._wait_pause(30)
 
+    def move_start_pose(self):
+        self._control("start_pose")
+        return self._wait_pause(30)
+
     def finish(self):
         state = self._control("finish")
         self._receipt(state)

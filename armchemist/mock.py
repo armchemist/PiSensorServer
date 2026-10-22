@@ -38,6 +38,10 @@ class MockAct:
         self.calls.append(("end_pose",))
         return self.pause()
 
+    def move_start_pose(self):
+        self.calls.append(("start_pose",))
+        return self.pause()
+
     def capture(self, after):
         if not self.paused:
             raise RuntimeError("정지 전에 촬영했습니다")

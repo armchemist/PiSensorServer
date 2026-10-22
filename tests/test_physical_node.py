@@ -186,3 +186,20 @@ def test_paused_hold_ignores_gripper_and_small_drift(node_type):
     assert node.agent_error == '' and node.agent_state == 'paused'
     node.agent_tick()
     assert 'l_joint4' in node.agent_error
+
+
+def test_start_pose_returns_with_held_gripper_command(node_type):
+    node = node_type.__new__(node_type)
+    node.agent_state, node.agent_error, node.execution_id = 'paused', 'Arm moved', 'e1'
+    node.end_pose_speed, node.gripper_cmd = 0.5, {'l_gripper_joint_1': 0.9}
+    node.start_pose = {'l_joint1': 0.0, 'l_gripper_joint_1': 0.2}
+    node._joints = lambda: ({'l_joint1': 1.0, 'l_gripper_joint_1': 0.9}, 1)
+    node._snapshot = lambda: {}
+    sent = []
+    node._publish_hold = lambda positions, seconds: sent.append((positions, seconds))
+    request = types.SimpleNamespace(task_info=types.SimpleNamespace(task_instruction=[json.dumps({'operation': 'start_pose', 'execution_id': 'e1'})]))
+    response = types.SimpleNamespace()
+    node.agent_control(request, response)
+    assert response.success and node.agent_state == 'moving' and node.agent_error == ''
+    assert sent == [({'l_joint1': 0.0, 'l_gripper_joint_1': 0.2}, 2.0)]
+    assert node.gripper_cmd['l_gripper_joint_1'] == 0.2

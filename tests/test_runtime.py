@@ -295,3 +295,19 @@ def test_manual_complete_stops_window_skips_judge_and_moves_to_end_pose():
     assert 'manual_complete' in phases and 'judging' not in phases
     done = next(e for e in result['events'] if e['phase'] == 'action_complete')
     assert done['completion_basis'] == 'manual'
+
+
+def test_revert_restores_start_pose_and_facts_after_failed_act():
+    runner, arm, _ = build(['incomplete'] * 3)
+    with pytest.raises(ExecutionError):
+        runner.revert()
+    before = dict(runner.facts)
+    result = runner.run(compile_plan('병 잡기', ['pickup_bottle1']))
+    assert result['status'] == 'failed' and runner.facts is None
+    assert runner.revert() == before
+    assert arm.calls[-2] == ('start_pose',) and runner.facts == before
+    with pytest.raises(ExecutionError):
+        runner.revert()  # 한 번만
+    assert runner.run(compile_plan('병 잡기', ['pickup_bottle1'], initial_facts=before))['status'] == 'finished'
+    with pytest.raises(ExecutionError):
+        runner.revert()  # 완료한 ACT 는 되돌리지 않는다

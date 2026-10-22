@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from .mock import MockAct, MockJudge, MockRail
 from .planning import DemoPlanner, Plan, Step, compile_plan
 from .registry import CAPABILITIES, INITIAL_FACTS, demo_actions
-from .runtime import Runner
+from .runtime import ExecutionError, Runner
 from .storage import LocalGraph, Neo4jGraph, Repository, subset, validate_graph
 
 
@@ -133,6 +133,18 @@ def create_app(*, repository=None, runner=None, planner=None, graph=None, config
             return {"mode": "mock", "rail_station": runner.rail.station(), "act_paused": runner.act.paused}
         return {"mode": "live", "rail": runner.rail.telemetry(), "act": runner.act._control("status")}
 
+    @app.post("/revert")
+    def revert():
+        with guard:
+            if active["id"]:
+                raise HTTPException(409, "실행 중에는 되돌릴 수 없습니다")
+            try:
+                facts = runner.revert()
+            except ExecutionError as exc:
+                raise HTTPException(409, str(exc))
+            repo.put("state", "world", {"facts": facts})
+        return {"facts": facts}
+
     @app.get("/rail")
     def rail_station():
         # 이동 중이거나 위치를 모르면 station 대신 이유를 돌려준다(관리자 화면 표시용).
@@ -144,7 +156,8 @@ def create_app(*, repository=None, runner=None, planner=None, graph=None, config
 
     @app.get("/state")
     def world_state():
-        return {"facts": runner.facts, "requires_reconciliation": runner.facts is None}
+        return {"facts": runner.facts, "requires_reconciliation": runner.facts is None,
+                "revertible": getattr(runner, "facts_before_act", None) is not None}
 
     @app.post("/state/reconcile")
     def reconcile(body: dict):

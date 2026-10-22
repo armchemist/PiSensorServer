@@ -57,6 +57,7 @@ class ActBackend(Protocol):
                    complete: threading.Event | None = None) -> PauseReceipt: ...
 
     def move_end_pose(self) -> PauseReceipt: ...
+    def move_start_pose(self) -> PauseReceipt: ...
     def pause(self) -> PauseReceipt: ...
     def finish(self): ...
     def capture(self, after: float) -> list[Frame]: ...
@@ -88,6 +89,8 @@ class Runner:
         self._lock = threading.Lock()
         # 운영자가 화면을 보고 지금 ACT 를 완료로 처리하라고 누른 버튼. 정책을 멈추고 끝 자세로 옮긴다.
         self.manual_complete = threading.Event()
+        # 마지막으로 시작한 ACT 직전의 물체 상태. 되돌리기(revert)가 자세와 함께 이 상태로 복원한다.
+        self.facts_before_act = None
         self.facts = dict(INITIAL_FACTS if initial_facts is None else initial_facts)
 
     def _accept(self, verdict):
@@ -96,6 +99,20 @@ class Runner:
             return replace(verdict, status="incomplete",
                            detail=f"{verdict.detail} (기준 {self.min_confidence} 미만)")
         return verdict
+
+    def revert(self):
+        """실패·중단된 ACT 를 시작 전 자세와 물체 상태로 되돌린다. 운영자가 화면을 보고 누른다.
+        완료한 ACT 는 대상이 아니다(시작 자세의 열린 그리퍼로 돌아가면 쥔 물체를 놓친다)."""
+        if self.facts_before_act is None:
+            raise ExecutionError("되돌릴 ACT 가 없습니다")
+        if not self._lock.acquire(blocking=False):
+            raise ExecutionError("실행 중에는 되돌릴 수 없습니다")
+        try:
+            self.act.move_start_pose()
+            self.facts, self.facts_before_act = dict(self.facts_before_act), None
+            return self.facts
+        finally:
+            self._lock.release()
 
     def run(self, plan: Plan, cancel=None, run_id=None):
         if not self._lock.acquire(blocking=False):
@@ -160,6 +177,7 @@ class Runner:
                 self.manual_complete.clear()
                 execution_id = uuid4().hex
                 emit("preparing", action=name, execution_id=execution_id)
+                self.facts_before_act = dict(self.facts)
                 self.act.prepare(cap, config, execution_id)
                 check_cancel()
                 for attempt in range(1, 4):
@@ -225,6 +243,7 @@ class Runner:
                         check_cancel()
                         emit("end_pose_reached", action=name, stopped_at=pause.stopped_at)
                         self.act.finish()
+                        self.facts_before_act = None  # 완료한 ACT 는 되돌리지 않는다
                         self.facts.update(cap.effects)
                         report["completed_actions"].append(name)
                         emit("action_complete", action=name, attempt=attempt,

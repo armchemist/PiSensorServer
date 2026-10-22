@@ -42,6 +42,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
     stop_reason = ""
     idle_stop = {}
     gripper_cmd = {}
+    start_pose = None
 
     def __init__(self, settings):
         self.settings = settings
@@ -221,6 +222,13 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.hold_positions, self.settle_ref, self.stable_since, self.stopped_at = None, None, None, None
         self.transfer_ready = False
 
+    def _move_to(self, positions, target):
+        """target 관절을 end_pose_speed 속도 상한(최소 2초)으로 보간 이동한다. 도착 후 agent_tick 이 정지를 확인한다."""
+        seconds = max(2.0, max(abs(v - positions[j]) for j, v in target.items()) / self.end_pose_speed)
+        self._publish_hold({**positions, **target}, seconds)
+        self.agent_state, self.move_until = "moving", time.monotonic() + seconds + 0.3
+        self.transfer_ready = False
+
     def _publish_hold(self, positions, seconds=0.1):
         positions = {**positions, **{j: v for j, v in self.gripper_cmd.items() if j in positions}}
         publishers = self.hold_publishers
@@ -314,6 +322,9 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             elif operation == "prepare":
                 if self.agent_state != "paused" or self.agent_error:
                     raise ValueError("Prepare requires verified hold")
+                # 실패하면 되돌아갈 ACT 시작 자세. 쥐고 있던 그리퍼는 측정 위치가 아니라 쥐던 명령으로 기억한다.
+                positions, _ = self._joints()
+                self.start_pose = {**positions, **{j: v for j, v in self.gripper_cmd.items() if j in positions}}
                 from .settings import validate_model
                 action = self.settings.actions[data['action']]
                 if (data['robot_type'], data['fps'], data['model_revision']) != (
@@ -376,10 +387,17 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                     positions, _ = self._joints()
                     if set(target) - set(positions):
                         raise ValueError("End pose joints not in robot profile")
-                    seconds = max(2.0, max(abs(v - positions[j]) for j, v in target.items()) / self.end_pose_speed)
-                    self._publish_hold({**positions, **target}, seconds)
-                    self.agent_state, self.move_until = "moving", time.monotonic() + seconds + 0.3
-                    self.transfer_ready = False
+                    self._move_to(positions, target)
+            elif operation == "start_pose":
+                # 실패한 ACT 를 되돌린다. prepare 직전에 확인한 정지 자세로 그리퍼까지 보간 이동한다.
+                if self.agent_state in ("uninitialized", "running", "preparing") or not self.start_pose:
+                    raise ValueError("No ACT start pose to return to")
+                positions, _ = self._joints()
+                if set(self.start_pose) != set(positions):
+                    raise ValueError("Start pose joints differ from robot profile")
+                self.gripper_cmd.update({j: v for j, v in self.start_pose.items() if 'gripper' in j})
+                self.agent_error = ""
+                self._move_to(positions, self.start_pose)
             elif operation == "pause":
                 if self.agent_state == "uninitialized":
                     raise ValueError("Initialize a robot profile first")
