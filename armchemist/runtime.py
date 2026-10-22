@@ -53,7 +53,8 @@ class ActBackend(Protocol):
     def prepare(self, cap: Capability, config: ActionConfig, execution_id: str): ...
     def run_window(self, seconds: float, cancel: threading.Event,
                    monitor: Callable[[], bool] | None = None, monitor_every: float = 0,
-                   monitor_after_s: float = 0) -> PauseReceipt: ...
+                   monitor_after_s: float = 0,
+                   complete: threading.Event | None = None) -> PauseReceipt: ...
 
     def move_end_pose(self) -> PauseReceipt: ...
     def pause(self) -> PauseReceipt: ...
@@ -85,6 +86,8 @@ class Runner:
         self.min_confidence, self.live_judge_s = min_confidence, live_judge_s
         self.on_event = on_event
         self._lock = threading.Lock()
+        # 운영자가 화면을 보고 지금 ACT 를 완료로 처리하라고 누른 버튼. 정책을 멈추고 끝 자세로 옮긴다.
+        self.manual_complete = threading.Event()
         self.facts = dict(INITIAL_FACTS if initial_facts is None else initial_facts)
 
     def _accept(self, verdict):
@@ -154,6 +157,7 @@ class Runner:
                         raise ExecutionError("레일 명령 완료 후 목표 스테이션이 확인되지 않았습니다")
                     emit("rail_arrived", station=current_station, command_id=command_id)
                 self.rail.arm_state(False, "ACT 실행 준비")
+                self.manual_complete.clear()
                 execution_id = uuid4().hex
                 emit("preparing", action=name, execution_id=execution_id)
                 self.act.prepare(cap, config, execution_id)
@@ -176,14 +180,19 @@ class Runner:
                     # 실행 중 판정은 평균 시간의 절반 이후부터. 그 전에는 데모에서도 끝나지 않는다.
                     pause = self.act.run_window(config.mean_duration_s, cancel, monitor=monitor,
                                                 monitor_every=self.live_judge_s,
-                                                monitor_after_s=config.mean_duration_s / 2)
+                                                monitor_after_s=config.mean_duration_s / 2,
+                                                complete=self.manual_complete)
                     if pause.execution_id != execution_id:
                         raise ExecutionError("이전 ACT의 정지 확인 응답입니다")
                     check_cancel()
                     emit("paused", action=name, attempt=attempt, stopped_at=pause.stopped_at,
                          stop_reason=pause.stop_reason, ran_s=pause.ran_s)
                     execution_only = config.completion_mode == 'mean_window'
-                    if execution_only:
+                    manual = self.manual_complete.is_set()
+                    if manual:
+                        verdict = Verdict("complete", "운영자 완료 처리")
+                        emit("manual_complete", action=name, attempt=attempt)
+                    elif execution_only:
                         emit("execution_window_complete", action=name, attempt=attempt,
                              duration_s=config.mean_duration_s, stopped_at=pause.stopped_at,
                              visual_verified=False)
@@ -209,7 +218,7 @@ class Runner:
                         verdict = self._accept(verdict)
                         emit("judged", action=name, attempt=attempt, verdict=asdict(verdict))
                     check_cancel()
-                    if execution_only or verdict.status == "complete":
+                    if manual or execution_only or verdict.status == "complete":
                         # 실행 중 판정·상한으로 끝 동작이 잘릴 수 있다. ACT 별 데모 끝 자세로 옮긴다.
                         emit("end_pose_moving", action=name)
                         pause = self.act.move_end_pose()
@@ -219,7 +228,8 @@ class Runner:
                         self.facts.update(cap.effects)
                         report["completed_actions"].append(name)
                         emit("action_complete", action=name, attempt=attempt,
-                             completion_basis="mean_window" if execution_only else "visual_decision")
+                             completion_basis="manual" if manual else
+                             "mean_window" if execution_only else "visual_decision")
                         if hasattr(self.rail, "telemetry"):
                             try:
                                 emit("telemetry", data=self.rail.telemetry())

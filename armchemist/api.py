@@ -328,6 +328,16 @@ def create_app(*, repository=None, runner=None, planner=None, graph=None, config
                 active["cancel"].set()
         return {"id": run_id, "cancel_requested": True}
 
+    @app.post("/runs/{run_id}/complete")
+    def complete_run(run_id: str):
+        # 운영자가 영상을 보고 지금 ACT 가 끝났다고 판단했다. 판정 없이 정책을 멈추고 끝 자세로 옮긴다.
+        get("run", run_id)
+        with guard:
+            if active["id"] != run_id:
+                raise HTTPException(409, "실행 중인 계획이 아닙니다")
+            runner.manual_complete.set()
+        return {"id": run_id, "complete_requested": True}
+
     @app.get("/reports/{run_id}")
     def report(run_id: str):
         value = get("run", run_id)

@@ -261,7 +261,7 @@ def test_low_confidence_complete_is_retried_and_live_judge_stops_window():
             return Verdict('complete', f'c={c}', '', c)
 
     class Act(MockAct):
-        def run_window(self, seconds, cancel, monitor=None, monitor_every=0, monitor_after_s=0):
+        def run_window(self, seconds, cancel, monitor=None, monitor_every=0, monitor_after_s=0, complete=None):
             receipt = super().run_window(seconds, cancel)
             self.paused = False  # 실행 중 판정은 팔이 움직이는 동안 촬영한다
             stopped = monitor is not None and self.calls.count(('run', seconds)) > 1 and monitor()
@@ -277,3 +277,21 @@ def test_low_confidence_complete_is_retried_and_live_judge_stops_window():
     assert result['status'] == 'finished'
     assert ('judged', 'incomplete') in phases and ('live_judged', 'complete') in phases
     assert ('paused', 'judged_complete') in phases
+
+
+def test_manual_complete_stops_window_skips_judge_and_moves_to_end_pose():
+    runner, arm, _ = build(['incomplete'] * 3)
+    actions = demo_actions()
+    actions['pickup_bottle1'] = ActionConfig(30)
+    runner.actions = actions
+    threading.Timer(0.2, runner.manual_complete.set).start()
+    started = time.monotonic()
+    result = runner.run(compile_plan('병 잡기', ['pickup_bottle1']))
+    assert time.monotonic() - started < 10
+    assert result['status'] == 'finished' and result['completed_actions'] == ['pickup_bottle1']
+    assert runner.judge.calls == 0
+    assert arm.calls.index(('end_pose',)) < arm.calls.index(('finish',))
+    phases = [e['phase'] for e in result['events']]
+    assert 'manual_complete' in phases and 'judging' not in phases
+    done = next(e for e in result['events'] if e['phase'] == 'action_complete')
+    assert done['completion_basis'] == 'manual'

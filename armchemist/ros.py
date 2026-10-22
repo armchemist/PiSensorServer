@@ -155,7 +155,7 @@ class PhysicalAct:
                             state.get("transfer_ready") is True, state.get("evidence", ""),
                             state.get("stop_reason") or "", state.get("ran_s"))
 
-    def _wait_pause(self, timeout, cancel=None, monitor=None, monitor_every=0, monitor_after_s=0):
+    def _wait_pause(self, timeout, cancel=None, monitor=None, monitor_every=0, monitor_after_s=0, complete=None):
         deadline = time.monotonic() + timeout
         next_check, judged_complete = time.monotonic() + max(monitor_after_s, monitor_every), False
         while time.monotonic() < deadline:
@@ -168,6 +168,10 @@ class PhysicalAct:
             if state.get("state") == "paused":
                 receipt = self._receipt(state)
                 return replace(receipt, stop_reason="judged_complete") if judged_complete else receipt
+            if complete is not None and complete.is_set() and state.get("state") == "running":
+                self._control("pause")
+                monitor, complete = None, None
+                continue
             if monitor and state.get("state") == "running" and time.monotonic() >= next_check:
                 # 실행 중 판정이 완료라면 정책을 멈춘다. 정지 후 판정은 호출한 쪽이 다시 한다.
                 if monitor():
@@ -177,12 +181,12 @@ class PhysicalAct:
             time.sleep(0.05)
         raise ExecutionError("ACT 실행/정지 확인 시간 초과")
 
-    def run_window(self, seconds, cancel, monitor=None, monitor_every=0, monitor_after_s=0):
+    def run_window(self, seconds, cancel, monitor=None, monitor_every=0, monitor_after_s=0, complete=None):
         if cancel.is_set():
             raise Cancelled("사용자 중단")
         self._control("run", duration_s=seconds)
         return self._wait_pause(seconds * self.max_factor + 30, cancel, monitor if monitor_every else None,
-                                monitor_every, monitor_after_s)
+                                monitor_every, monitor_after_s, complete)
 
     def pause(self):
         if not self.initialized:

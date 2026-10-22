@@ -138,3 +138,7 @@ def test_live_judge_complete_pauses_running_window():
     act._control = control
     receipt = act.run_window(10, threading.Event(), monitor=lambda: True, monitor_every=0.01)
     assert sent[0] == 'run' and 'pause' in sent and receipt.stop_reason == 'judged_complete'
+    sent.clear(); state.update(state='running')
+    done = threading.Event(); done.set()
+    act.run_window(10, threading.Event(), complete=done)
+    assert sent[:2] == ['run', 'status'] and 'pause' in sent

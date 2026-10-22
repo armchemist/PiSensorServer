@@ -16,10 +16,14 @@ class MockAct:
         self.execution_id = execution_id
         self.calls.append(("prepare", cap.id))
 
-    def run_window(self, seconds, cancel: threading.Event, monitor=None, monitor_every=0, monitor_after_s=0):
+    def run_window(self, seconds, cancel: threading.Event, monitor=None, monitor_every=0, monitor_after_s=0,
+                   complete=None):
         self.calls.append(("run", seconds))
         self.paused = False
-        interrupted = cancel.wait(seconds)
+        end = time.monotonic() + seconds
+        while time.monotonic() < end and not cancel.is_set() and not (complete and complete.is_set()):
+            time.sleep(0.01)
+        interrupted = cancel.is_set()
         receipt = self.pause()
         if interrupted:
             raise Cancelled("사용자 중단")
