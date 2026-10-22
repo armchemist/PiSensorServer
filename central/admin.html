@@ -5,12 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ARMchemist 관리자</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 1em auto; padding: 0 16px; }
+  body { font-family: system-ui, sans-serif; max-width: 1500px; margin: .6em auto; padding: 0 16px; }
+  h1 { font-size: 1.3em; margin: .2em 0; }
+  /* 카메라 옆에 실행 제어와 태스크를 둬서 스크롤 없이 조작한다. 좁은 화면에서는 위아래로 쌓는다. */
+  .console { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr); gap: .8em; align-items: start; }
+  .console > div > section:first-child { margin-top: 0; }
+  @media (max-width: 900px) { .console { grid-template-columns: 1fr; } }
+  .controls button { padding: .5em 1em; font-size: 1em; }
   section { border: 1px solid #ccc; border-radius: 6px; padding: .6em 1em; margin: .8em 0; }
   h2 { font-size: 1em; margin: .2em 0 .5em; }
   .off { color: #b00; } .on { color: #080; } .muted { color: #777; font-size: .9em; }
   button { margin: .2em .3em .2em 0; padding: .35em .8em; }
-  #cam { width: 100%; max-height: 420px; object-fit: contain; background: #111; display: block; border-radius: 4px; }
+  #cam { width: 100%; max-height: 75vh; object-fit: contain; background: #111; display: block; border-radius: 4px; }
   .stations span { display: inline-block; padding: .3em .9em; margin-right: .3em; border-radius: 1em; background: #eee; color: #888; }
   .stations span.here { background: #2a6; color: #fff; font-weight: 700; }
   .tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .4em; }
@@ -22,6 +28,8 @@
   .running, .queued { background: #d6e6fb; color: #004a9f; } .cancelled { background: #fde9c4; color: #7a4b00; }
   #msg, #run-error { white-space: pre-wrap; color: #900; }
   #cancel-btn { color: #b00; font-weight: 600; }
+  #complete-btn { color: #060; font-weight: 600; }
+  #revert-btn { color: #7a4b00; font-weight: 600; }
   table { border-collapse: collapse; width: 100%; }
   td { padding: .2em .6em .2em 0; font-size: .9em; border-top: 1px solid #eee; vertical-align: top; }
 </style>
@@ -31,16 +39,36 @@
 <p id="conn" class="muted">연결 중…</p>
 <p id="msg"></p>
 
-<section>
-  <h2>탑뷰 카메라</h2>
-  <img id="cam" alt="탑뷰 카메라 (web_video_server :8080)">
-</section>
-
-<section>
-  <h2>레일 위치</h2>
-  <div class="stations" id="stations"></div>
-  <p id="rail-note" class="muted"></p>
-</section>
+<div class="console">
+  <div>
+    <section>
+      <h2>탑뷰 카메라</h2>
+      <img id="cam" alt="탑뷰 카메라 (web_video_server :8080)">
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>실행 <span id="status" class="pill">-</span> <span id="run-title"></span></h2>
+      <div class="controls">
+        <button id="complete-btn" disabled>완료로 처리</button>
+        <button id="cancel-btn" disabled>중단</button>
+        <button id="revert-btn" disabled>ACT 시작 전으로 되돌리기</button>
+      </div>
+      <p class="muted">소프트웨어 정지입니다. 비상정지를 대신하지 않습니다.</p>
+      <p id="run-error"></p>
+    </section>
+    <section>
+      <h2>레일 위치</h2>
+      <div class="stations" id="stations"></div>
+      <p id="rail-note" class="muted"></p>
+    </section>
+    <section>
+      <h2>태스크</h2>
+      <p class="muted">누르면 해당 스테이션으로 레일을 옮긴 뒤 ACT 를 실행합니다.</p>
+      <div class="tasks" id="tasks"></div>
+    </section>
+  </div>
+</div>
 
 <section>
   <h2>물체 상태</h2>
@@ -52,16 +80,7 @@
 </section>
 
 <section>
-  <h2>태스크</h2>
-  <p class="muted">누르면 해당 스테이션으로 레일을 옮긴 뒤 ACT 를 실행합니다.</p>
-  <div class="tasks" id="tasks"></div>
-</section>
-
-<section>
-  <h2>실행 <span id="status" class="pill">-</span> <span id="run-title"></span></h2>
-  <button id="cancel-btn" disabled>중단</button>
-  <span class="muted">소프트웨어 정지입니다. 비상정지를 대신하지 않습니다.</span>
-  <p id="run-error"></p>
+  <h2>실행 기록</h2>
   <table><tbody id="events"></tbody></table>
 </section>
 
@@ -69,7 +88,7 @@
 const API = '/agent/api';
 const STATIONS = ['시약존', '실린더존', '실험존'];
 const $ = id => document.getElementById(id);
-let caps = [], facts = null, rail = {}, runId = null, active = false;
+let caps = [], facts = null, rail = {}, runId = null, active = false, revertible = false;
 
 // 탑뷰 = RealSense 컬러. 영상은 로봇 노드와 함께 뜨는 web_video_server(:8080)가 보낸다.
 $('cam').src = `http://${location.hostname}:8080/stream?topic=/camera1/color/image_raw&type=mjpeg&quality=60`;
@@ -87,7 +106,8 @@ const show = e => { $('msg').textContent = e ? String(e.message || e) : ''; };
 
 async function refresh() {
   const [health, state, r] = await Promise.all([call('GET', '/health'), call('GET', '/state'), call('GET', '/rail')]);
-  facts = state.facts; rail = r;
+  facts = state.facts; rail = r; revertible = state.revertible;
+  $('revert-btn').disabled = active || !revertible;
   $('conn').innerHTML = `모드 <b class="${health.mode === 'live' ? 'off' : 'on'}">${health.mode}</b>` +
     (rail.fixed ? ' · 레일 미사용 모드' : '');
   $('stations').innerHTML = STATIONS.map(s => `<span class="${s === rail.station ? 'here' : ''}">${s}</span>`).join('');
@@ -153,6 +173,8 @@ async function pollRun() {
   $('events').innerHTML = r.events.map(e =>
     `<tr><td>${new Date(e.at * 1000).toLocaleTimeString()}</td><td><b>${e.phase}</b></td><td>${eventText(e)}</td></tr>`).join('');
   $('cancel-btn').disabled = !active;
+  $('complete-btn').disabled = !active;
+  $('revert-btn').disabled = active || !revertible;
   renderTasks();
   if (active) setTimeout(pollRun, 1000); else refresh().catch(show);
 }
@@ -164,6 +186,16 @@ $('reconcile-btn').onclick = guard(async () => {
   await refresh();
 });
 $('cancel-btn').onclick = guard(async () => { if (runId) await call('POST', `/runs/${runId}/cancel`); });
+$('revert-btn').onclick = guard(async () => {
+  if (!confirm('실패한 ACT 를 시작 전으로 되돌립니다.\n팔(그리퍼 포함)이 ACT 시작 자세로 천천히 이동하고, 물체 상태도 그때로 돌아갑니다.\n주변에 걸리는 것이 없는지 확인하세요.')) return;
+  $('revert-btn').disabled = true;
+  await call('POST', '/revert');
+  await refresh();
+});
+$('complete-btn').onclick = guard(async () => {
+  if (runId && confirm('지금 ACT 를 완료로 처리합니다.\n정책을 멈추고 끝 자세로 이동한 뒤 다음 단계로 넘어갑니다.'))
+    await call('POST', `/runs/${runId}/complete`);
+});
 
 (async () => {
   try {
