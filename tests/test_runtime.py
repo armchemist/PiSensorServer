@@ -311,3 +311,13 @@ def test_revert_restores_start_pose_and_facts_after_failed_act():
     assert runner.run(compile_plan('병 잡기', ['pickup_bottle1'], initial_facts=before))['status'] == 'finished'
     with pytest.raises(ExecutionError):
         runner.revert()  # 완료한 ACT 는 되돌리지 않는다
+
+
+def test_dead_camera_stops_before_rail_moves():
+    runner, arm, rail = build()
+    def dead(topics):
+        raise ExecutionError('카메라 영상 없음: /camera2/image_raw/compressed')
+    arm.check_cameras = dead
+    result = runner.run(compile_plan('실린더', ['pickup_cylinder'], initial_station='시약존'))
+    assert result['status'] == 'failed' and 'camera2' in result['error']
+    assert rail.moves == [] and not [c for c in arm.calls if c[0] in ('prepare', 'run')]

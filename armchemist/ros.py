@@ -199,6 +199,16 @@ class PhysicalAct:
     def capture(self, after):
         return self.ros.capture(self.topics, after)
 
+    def check_cameras(self, topics):
+        # 레일을 옮기기 전에 이 ACT 의 카메라가 지금 영상을 보내는지 본다(손목 카메라 USB 끊김 실측).
+        self.ros.subscribe(topics)
+        after = time.time() - 3
+        try:
+            self.ros.capture(topics, after, timeout=5)
+        except ExecutionError as exc:
+            stale = [t for t in topics if stamp_seconds(self.ros.frames.get(t, {})) <= after]
+            raise ExecutionError(f"카메라 영상 없음: {', '.join(stale) or exc}") from exc
+
     def move_end_pose(self):
         # 속도 제한(기본 0.5 rad/s)으로 최대 약 3π 이동 + 정지 확인 여유
         self._control("end_pose")

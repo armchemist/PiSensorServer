@@ -38,6 +38,9 @@ class MockAct:
         self.calls.append(("end_pose",))
         return self.pause()
 
+    def check_cameras(self, topics):
+        pass
+
     def move_start_pose(self):
         self.calls.append(("start_pose",))
         return self.pause()
