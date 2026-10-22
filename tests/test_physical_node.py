@@ -125,6 +125,24 @@ def test_end_pose_moves_act_joints_and_keeps_gripper(node_type):
     assert node.agent_state == 'moving'
 
 
+def test_held_frames_keep_last_good_frame_after_camera_gap(node_type):
+    frames = node_type.__init__.__globals__['HeldFrames']
+    now = [0.0]
+    held = frames({'wrist': None}, warmup_s=5, clock=lambda: now[0])
+    held['wrist'] = 'good'
+    now[0] = 0.1
+    held['wrist'] = 'good2'
+    for i in range(50):  # 4.0초에 끊겼다 돌아온 뒤 15fps 로 들어오는 하얀 화면 5초
+        now[0] = 4.0 + i * 0.1
+        held['wrist'] = 'white'
+    assert held['wrist'] == 'good2'
+    now[0] = 9.05
+    held['wrist'] = 'fixed'
+    assert held['wrist'] == 'fixed'
+    held['wrist'] = None  # communicator 초기화는 그대로 통과
+    assert held['wrist'] is None
+
+
 def test_pause_while_idle_clears_old_hold_error_and_rechecks(node_type):
     node = node_type.__new__(node_type)
     node.agent_state, node.agent_error, node.execution_id = 'paused', 'Arm moved after confirmed hold', 'idle'

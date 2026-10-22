@@ -14,6 +14,26 @@ from physical_ai_server.physical_ai_server import PhysicalAIServer
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
+class HeldFrames(dict):
+    """카메라별 최신 영상. 끊겼다 돌아온 직후 warmup_s 동안의 프레임은 버리고 직전 영상을 유지한다.
+    손목 카메라는 재연결되면 공장 기본 노출(하얀 화면)로 돌아오고, dual_cameras.sh 가 약 4초 뒤 노출을 다시 넣는다."""
+
+    def __init__(self, frames, warmup_s, gap_s=1.0, clock=time.monotonic):
+        super().__init__(frames)
+        self.warmup_s, self.gap_s, self.clock = warmup_s, gap_s, clock
+        self.last_rx, self.warm_until = {}, {}
+
+    def __setitem__(self, name, msg):
+        now = self.clock()
+        if msg is not None:
+            if now - self.last_rx.get(name, now) > self.gap_s:
+                self.warm_until[name] = now + self.warmup_s
+            self.last_rx[name] = now
+            if now < self.warm_until.get(name, 0) and self.get(name) is not None:
+                return
+        super().__setitem__(name, msg)
+
+
 class AgentPhysicalAIServer(PhysicalAIServer):
     # 실행 window 상태(테스트는 __init__ 없이 만들기도 한다).
     started_at = idle_ref = idle_since = ran_s = action_idle_s = None
@@ -41,6 +61,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.hold_tolerance = settings.robot.get('hold_tolerance_rad', 0.01)
         self.hold_drift = settings.robot.get('hold_drift_rad', self.hold_tolerance)
         self.camera_max_age = settings.robot.get('camera_max_age_s', 2.0)
+        self.camera_warmup = settings.robot.get('camera_warmup_s', 0)
         # 없으면 평균 시간 고정 window(이전 동작). 있으면 정책 출력이 멈출 때 정지하고 평균×max_factor 가 상한.
         self.idle_stop = settings.robot.get('idle_stop') or {}
         self.end_pose_speed = settings.robot.get('end_pose_speed_rad_s', 0.5)
@@ -91,6 +112,8 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self._original_publish = self.communicator.publish_action
         self.communicator.publish_action = self._publish_inference
         self.communicator.operation_mode = 'inference'
+        if self.camera_warmup and not isinstance(self.communicator.camera_topic_msgs, HeldFrames):
+            self.communicator.camera_topic_msgs = HeldFrames(self.communicator.camera_topic_msgs, self.camera_warmup)
 
     def _publish_inference(self, joint_msg_datas):
         now = time.monotonic()
