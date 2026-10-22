@@ -157,6 +157,22 @@ def test_pause_while_idle_clears_old_hold_error_and_rechecks(node_type):
     assert node.agent_error == 'Stale ACT camera observation'
 
 
+def test_hold_keeps_last_policy_gripper_command(node_type):
+    node = node_type.__new__(node_type)
+    node.agent_state, node.deadline, node.idle_stop, node.gripper_cmd = 'running', None, {}, {}
+    node.window_duration, node.action_idle_s = 10, None
+    node._original_publish = lambda msgs: None
+    point = types.SimpleNamespace(positions=[0.5, 1.2])
+    node._publish_inference({'leader_right': types.SimpleNamespace(
+        joint_names=['r_joint1', 'r_gripper_joint_1'], points=[point])})
+    sent = []
+    node.hold_publishers = {'leader_right': types.SimpleNamespace(publish=sent.append)}
+    node.hold_joint_order = {'leader_right': ['r_joint1', 'r_gripper_joint_1']}
+    msgs = sys.modules['trajectory_msgs.msg']
+    node._publish_hold({'r_joint1': 0.4, 'r_gripper_joint_1': 0.9})  # 그리퍼는 물체에 막혀 0.9 에서 멈춤
+    assert sent[0].points[0].positions == [0.4, 1.2]
+
+
 def test_paused_hold_ignores_gripper_and_small_drift(node_type):
     node = node_type.__new__(node_type)
     node.agent_state, node.agent_error, node.move_until = 'paused', '', 0

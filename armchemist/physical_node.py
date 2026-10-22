@@ -41,6 +41,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
     move_until = None
     stop_reason = ""
     idle_stop = {}
+    gripper_cmd = {}
 
     def __init__(self, settings):
         self.settings = settings
@@ -57,6 +58,9 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.stable_since = None
         self.last_joint_stamp = 0
         self.transfer_ready = False
+        # 정책이 마지막으로 보낸 그리퍼 목표. 물체를 쥔 그리퍼는 측정 위치에서 멈춰 있으므로
+        # 측정 위치로 정지 명령을 내리면 쥐는 힘이 0 이 되어 놓친다. 정지·끝 자세에서도 이 목표를 유지한다.
+        self.gripper_cmd = {}
         self.transfer_limits = settings.robot['transfer_limits']
         self.hold_tolerance = settings.robot.get('hold_tolerance_rad', 0.01)
         self.hold_drift = settings.robot.get('hold_drift_rad', self.hold_tolerance)
@@ -131,6 +135,10 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             self.stop_reason = "policy_idle"
             self._begin_pause()
             return
+        for msg in joint_msg_datas.values():
+            for joint, value in zip(msg.joint_names, msg.points[0].positions):
+                if 'gripper' in joint:
+                    self.gripper_cmd[joint] = value
         self._original_publish(joint_msg_datas)
 
     def _policy_idle(self, joint_msg_datas, now):
@@ -214,6 +222,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.transfer_ready = False
 
     def _publish_hold(self, positions, seconds=0.1):
+        positions = {**positions, **{j: v for j, v in self.gripper_cmd.items() if j in positions}}
         publishers = self.hold_publishers
         if not publishers:
             raise RuntimeError("No joint trajectory publishers")
