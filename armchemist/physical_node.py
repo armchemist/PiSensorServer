@@ -39,6 +39,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
         self.transfer_ready = False
         self.transfer_limits = settings.robot['transfer_limits']
         self.hold_tolerance = settings.robot.get('hold_tolerance_rad', 0.01)
+        self.hold_drift = settings.robot.get('hold_drift_rad', self.hold_tolerance)
         self.camera_max_age = settings.robot.get('camera_max_age_s', 2.0)
         # 없으면 평균 시간 고정 window(이전 동작). 있으면 정책 출력이 멈출 때 정지하고 평균×max_factor 가 상한.
         self.idle_stop = settings.robot.get('idle_stop') or {}
@@ -226,11 +227,17 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             # 정지 명령 시점에 팔이 아직 움직이고 있으면 관성·부하로 그 위치에서 벗어나 멈춘다.
             # 그래서 명령 위치가 아니라 최근 위치(settle_ref) 기준으로 멈췄는지 본다.
             # 확인 이후에는 settle_ref 가 고정되어 그 자세에서 벗어나면 실패한다.
-            within = all(abs(positions[j] - self.settle_ref[j]) <= self.hold_tolerance for j in positions)
+            # 그리퍼는 제외한다. 쥔 물체를 계속 누르므로(gripper_cmd) 물체가 밀리면 조금씩 닫힐 수 있다.
+            # 확인 이후에는 서보가 정지 명령으로 수렴하며 생기는 작은 처짐을 hold_drift 까지 허용한다.
+            arm = [j for j in positions if 'gripper' not in j]
+            tolerance = self.hold_drift if self.agent_state == "paused" else self.hold_tolerance
+            within = all(abs(positions[j] - self.settle_ref[j]) <= tolerance for j in arm)
             if not within:
                 self.stable_since = None
                 if self.agent_state == "paused":
-                    raise RuntimeError("Arm moved after confirmed hold")
+                    joint = max(arm, key=lambda j: abs(positions[j] - self.settle_ref[j]))
+                    raise RuntimeError(f"Arm moved after confirmed hold ({joint} "
+                                       f"{positions[joint] - self.settle_ref[joint]:+.4f} rad)")
                 self.settle_ref = positions
             elif self.stable_since is None:
                 self.stable_since = time.monotonic()
@@ -243,7 +250,7 @@ class AgentPhysicalAIServer(PhysicalAIServer):
                     j in positions and bounds[0] <= positions[j] <= bounds[1]
                     for j, bounds in self.transfer_limits.items()) and set(positions) <= set(self.transfer_limits)
             if self.agent_state == "pausing" and time.monotonic() - self.pause_since > 10:
-                joint = max(positions, key=lambda j: abs(positions[j] - self.settle_ref[j]))
+                joint = max(arm, key=lambda j: abs(positions[j] - self.settle_ref[j]))
                 raise RuntimeError(f"Hold confirmation timed out ({joint} still moving, "
                                    f"{positions[joint] - self.hold_positions[joint]:+.4f} rad from hold)")
         except Exception as exc:
@@ -344,6 +351,10 @@ class AgentPhysicalAIServer(PhysicalAIServer):
             elif operation == "pause":
                 if self.agent_state == "uninitialized":
                     raise ValueError("Initialize a robot profile first")
+                # 정책이 돌지 않을 때의 pause 는 정지 확인을 처음부터 다시 한다. 예전 오류(예: 시작 직후
+                # follower 가 home 으로 가며 생긴 "Arm moved after confirmed hold")를 지우고 지금 자세에서 다시 잡는다.
+                if self.agent_state not in ("running", "preparing"):
+                    self.agent_error = ""
                 self._begin_pause()
             elif operation == "finish":
                 if self.agent_state != "paused" or self.agent_error:

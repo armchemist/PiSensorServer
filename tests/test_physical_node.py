@@ -123,3 +123,32 @@ def test_end_pose_moves_act_joints_and_keeps_gripper(node_type):
     assert point.positions == [1.0, 0.6]                  # 그리퍼는 지금 값 유지
     assert point.time_from_start.sec == 2                 # 1 rad / 0.5 rad/s = 2초
     assert node.agent_state == 'moving'
+
+
+def test_pause_while_idle_clears_old_hold_error_and_rechecks(node_type):
+    node = node_type.__new__(node_type)
+    node.agent_state, node.agent_error, node.execution_id = 'paused', 'Arm moved after confirmed hold', 'idle'
+    node.started_at, node.ran_s = None, None
+    node._snapshot = lambda: {}
+    request = types.SimpleNamespace(task_info=types.SimpleNamespace(task_instruction=[json.dumps({'operation': 'pause', 'execution_id': 'idle'})]))
+    response = types.SimpleNamespace()
+    node.agent_control(request, response)
+    assert response.success and node.agent_error == '' and node.agent_state == 'pausing'
+    node.agent_state, node.agent_error = 'running', 'Stale ACT camera observation'
+    node.agent_control(request, response)
+    assert node.agent_error == 'Stale ACT camera observation'
+
+
+def test_paused_hold_ignores_gripper_and_small_drift(node_type):
+    node = node_type.__new__(node_type)
+    node.agent_state, node.agent_error, node.move_until = 'paused', '', 0
+    node.hold_tolerance, node.hold_drift, node.transfer_limits = 0.01, 0.05, {}
+    ref = {'l_joint4': -1.06, 'l_gripper_joint_1': 0.27}
+    node.hold_positions, node.settle_ref, node.last_joint_stamp = ref, ref, 0
+    node.stable_since, node.pause_since = 0, 0
+    samples = iter([({'l_joint4': -1.03, 'l_gripper_joint_1': -0.02}, 1), ({'l_joint4': -1.0, 'l_gripper_joint_1': -0.02}, 2)])
+    node._joints = lambda: next(samples)
+    node.agent_tick()
+    assert node.agent_error == '' and node.agent_state == 'paused'
+    node.agent_tick()
+    assert 'l_joint4' in node.agent_error

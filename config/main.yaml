@@ -46,6 +46,8 @@ robot:
   hold_profile: omx_dual
   # 정지 확인 허용 오차(rad). 실측: 정지 명령 직후 l_joint3 이 엔코더 2칸(0.0031) 처져 0.003 으로는 확인되지 않았다.
   hold_tolerance_rad: 0.01
+  # 정지 확인 후 허용하는 관절 처짐(rad, 그리퍼 제외). 실측: 확인 직후 l_joint4 가 0.0107 더 움직여 0.01 로는 오류.
+  hold_drift_rad: 0.05
   # ACT 실행 중 카메라 영상의 최대 나이(초). 실측: 손목 usb_cam(/camera2, /camera3) 헤더 시각이 약 1.1초 늦다.
   camera_max_age_s: 2.0
   # ACT 종료: 정책 출력(관절 목표)이 idle_s 동안 action_tolerance_rad 안에 머물면 정지 후 판정한다.
