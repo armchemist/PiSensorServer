@@ -58,7 +58,20 @@ robot:
     max_factor: 3.5
   # 완료 후 actions.<ACT>.end_pose 로 옮기는 관절 속도 상한(rad/s). 최소 2초에 걸쳐 이동한다.
   end_pose_speed_rad_s: 0.5
-  transfer_limits: {}
+  # 레일 이동 허용 관절 범위(rad): 모든 ACT end_pose 의 관절별 최소~최대 ±0.3. 그리퍼는 물건을 쥔 채 이동하므로 전체 범위.
+  transfer_limits:
+    l_joint1: [-0.371, 0.328]
+    l_joint2: [-1.832, 0.167]
+    l_joint3: [1.094, 1.894]
+    l_joint4: [-2.001, 1.774]
+    l_joint5: [-0.345, 0.359]
+    l_gripper_joint_1: [-3.15, 3.15]
+    r_joint1: [-0.319, 0.408]
+    r_joint2: [-2.262, -1.252]
+    r_joint3: [1.157, 2.012]
+    r_joint4: [-0.514, 1.955]
+    r_joint5: [-0.334, 0.389]
+    r_gripper_joint_1: [-3.15, 3.15]
   profiles:
     omx_left:
       cameras:
