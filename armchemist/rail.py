@@ -10,13 +10,16 @@ from .runtime import Cancelled, ExecutionError
 
 class CentralRail:
     def __init__(self, base_url, *, api_key="", device_id="pi2", timeout_s=120,
-                 session=None, speed_mm_s=5):
+                 session=None, speed_mm_s=5, station_names=None):
         if not 0 < speed_mm_s <= 30:
             raise ValueError("잘못된 레일 속도")
         self.url, self.device_id = base_url.rstrip("/"), device_id
         self.session = session or requests.Session()
         self.headers = {"X-API-Key": api_key} if api_key else {}
         self.timeout_s, self.speed = timeout_s, speed_mm_s
+        # 에이전트 스테이션 이름 -> Pi 레일 스테이션 이름. 없으면 같은 이름을 쓴다.
+        self.names = dict(station_names or {})
+        self.agent_names = {v: k for k, v in self.names.items()}
 
     def request(self, method, path, **kwargs):
         try:
@@ -42,7 +45,7 @@ class CentralRail:
         command = status.get("rail_commands", {}).get(self.device_id, {})
         if rail.get("moving") or command.get("status") in ("PENDING", "RUNNING", "UNKNOWN"):
             raise ExecutionError("레일이 이동 중이거나 이전 명령의 결과가 불명확합니다")
-        return rail.get("station")
+        return self.agent_names.get(rail.get("station"), rail.get("station"))
 
     def arm_state(self, ready, evidence):
         self.request("POST", "/arm/state", json={"safe": ready, "source": "robot",
@@ -55,7 +58,8 @@ class CentralRail:
             raise Cancelled("사용자 중단")
         command_id = uuid4().hex
         # 응답이 유실돼도 새 id로 다시 보내지 않는다. 상위 실행기가 중단/정지를 요청한다.
-        result = self.request("POST", "/rail/command", json={"id": command_id, "station": station,
+        target = self.names.get(station, station)
+        result = self.request("POST", "/rail/command", json={"id": command_id, "station": target,
                               "device_id": self.device_id, "speed_mm_s": self.speed})
         if result.get("id") != command_id:
             raise ExecutionError("레일 명령 ID 불일치")
@@ -71,7 +75,7 @@ class CentralRail:
             state = command.get("status")
             if state in ("UNKNOWN", "FAILED", "ABORTED"):
                 raise ExecutionError(f"레일 명령 {command_id}: {state}")
-            if state == "DONE" and not rail.get("moving") and rail.get("station") == station \
+            if state == "DONE" and not rail.get("moving") and rail.get("station") == target \
                     and device.get("ts", 0) >= command.get("updated_at", float("inf")):
                 return command_id
             if state not in ("PENDING", "RUNNING", "DONE"):

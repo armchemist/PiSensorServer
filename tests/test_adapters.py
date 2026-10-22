@@ -89,6 +89,16 @@ def test_rail_done_waits_for_fresh_report_after_result(monkeypatch):
     assert all('/rail/command?' not in c[1] for c in session.calls)
 
 
+def test_rail_maps_agent_station_to_pi_station(monkeypatch):
+    monkeypatch.setattr('armchemist.rail.uuid4', lambda: type('ID', (), {'hex': 'cmd'})())
+    done = status('cmd', station='비커_센서')
+    session = Session([Response({'id': 'cmd'}), Response(done), Response(done)])
+    rail = CentralRail('http://central', session=session, station_names={'실험존': '비커_센서'})
+    assert rail.move('실험존', threading.Event()) == 'cmd'
+    assert session.calls[0][2]['json']['station'] == '비커_센서'
+    assert rail.station() == '실험존'
+
+
 def test_unknown_rail_result_never_resubmits(monkeypatch):
     monkeypatch.setattr('armchemist.rail.uuid4', lambda: type('ID', (), {'hex': 'cmd'})())
     session = Session([Response({'id': 'cmd'}), Response(status('cmd', state='UNKNOWN'))])

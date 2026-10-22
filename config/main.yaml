@@ -27,6 +27,10 @@ rail:
   api_key_env: PISENSOR_API_KEY
   device_id: pi2
   timeout_s: 120
+  # 레일 이동 속도(mm/s). 중앙 서버 상한 30.
+  speed_mm_s: 30
+  # 에이전트 스테이션 -> Pi 레일 스테이션 이름 (Pi 의 stations 목록과 같아야 한다)
+  station_names: {시약존: 시약통, 실린더존: 시험관_실린더, 실험존: 비커_센서}
   # 레일 없이 팔만 시험할 때 스테이션 이름(시약존/실린더존/실험존). 그 스테이션 ACT만 실행하고
   # 레일 서버는 부르지 않는다. 비우면 위 central_url 레일을 쓴다.
   fixed_station: ''
