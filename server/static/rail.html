@@ -125,11 +125,17 @@
       <div class="row">
         <button id="b-mark-start">여기가 시작점</button>
         <span class="status" id="mark-start-v">미지정</span>
+        <input id="i-cal-start" type="number" step="0.1" placeholder="시작점 mm" aria-label="시작점 mm">
+        <button id="b-set-start">값으로 지정</button>
       </div>
       <div class="row" style="margin-top:6px">
         <button id="b-mark-end">여기가 끝점</button>
         <span class="status" id="mark-end-v">미지정</span>
+        <input id="i-cal-end" type="number" step="0.1" placeholder="끝점 mm" aria-label="끝점 mm">
+        <button id="b-set-end">값으로 지정</button>
       </div>
+      <p class="hint">입력값은 보정 시작 당시 위치가 0mm인 상대 좌표입니다. 값 지정은 모터를 움직이지 않습니다.
+        완료하면 낮은 좌표가 0mm가 되고 두 점 사이 거리가 스트로크로 저장됩니다.</p>
       <div class="row" style="margin-top:12px">
         <button class="primary" id="b-cal-end">보정 완료</button>
         <button class="danger" id="b-cal-cancel">취소</button>
@@ -305,6 +311,8 @@ function render() {
   $("b-cal-begin").disabled = busy;
   $("b-cal-cancel").disabled = busy;
   $("b-mark-start").disabled = $("b-mark-end").disabled = busy || !calibrating;
+  $("b-set-start").disabled = $("b-set-end").disabled = busy || !calibrating;
+  $("i-cal-start").disabled = $("i-cal-end").disabled = busy || !calibrating;
 
   const ms = cal.calib_start_mm, me = cal.calib_end_mm;
   const fmt = (v) => (v === null || v === undefined ? "미지정" : `${v.toFixed(2)}mm`);
@@ -437,6 +445,14 @@ $("b-mark-start").onclick = () =>
   act(() => api("/rail/calibration/mark", "POST", { point: "start" }));
 $("b-mark-end").onclick = () =>
   act(() => api("/rail/calibration/mark", "POST", { point: "end" }));
+for (const point of ["start", "end"]) {
+  $("b-set-" + point).onclick = () => act(() => {
+    const raw = $("i-cal-" + point).value.trim();
+    const mm = Number(raw);
+    if (!raw || !Number.isFinite(mm)) throw new Error("유효한 mm 좌표를 입력하세요.");
+    return api("/rail/calibration/mark", "POST", { point, mm });
+  });
+}
 $("b-cal-cancel").onclick = () => act(() => api("/rail/calibration/cancel", "POST"));
 $("b-cal-end").onclick = () => act(async () => {
   const r = await api("/rail/calibration/end", "POST");

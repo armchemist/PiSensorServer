@@ -26,6 +26,7 @@ lgpio 는 커널의 GPIO 캐릭터 장치를 거치므로 칩 종류를 타지 �
 """
 
 import json
+import math
 import os
 import threading
 import time
@@ -295,15 +296,18 @@ def begin_calibration():
     return calibration()
 
 
-def mark_calibration_point(point):
-    """지금 자리를 시작점 또는 끝점으로 찍는다. 다시 찍으면 덮어쓴다."""
+def mark_calibration_point(point, mm=None):
+    """현재 위치 또는 입력한 보정 상대 좌표를 양 끝으로 지정한다."""
     global _calib_start_mm, _calib_end_mm
     if not _calibrating:
         raise SoftLimitError("보정 중이 아닙니다. begin_calibration() 부터 부르세요.")
+    value = _position_mm if mm is None else float(mm)
+    if not math.isfinite(value):
+        raise SoftLimitError("좌표는 유한한 mm 값이어야 합니다.")
     if point == "start":
-        _calib_start_mm = round(_position_mm, 4)
+        _calib_start_mm = round(value, 4)
     elif point == "end":
-        _calib_end_mm = round(_position_mm, 4)
+        _calib_end_mm = round(value, 4)
     else:
         raise SoftLimitError(f"point 는 'start' 또는 'end' 여야 합니다 (받은 값: {point!r})")
     return calibration()

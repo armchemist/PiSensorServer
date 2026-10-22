@@ -411,12 +411,14 @@ def rail_calibration():
 
 @app.post("/rail/calibration/begin")
 def rail_calibration_begin():
-    """지금 캐리지가 있는 자리를 시작 지점(기준 0)으로 잡는다."""
+    """현재 위치를 임시 기준 0으로 삼아 보정을 시작한다. 끝점은 별도 지정한다."""
     return _rail_call(rail.begin_calibration)
 
 
 class MarkRequest(BaseModel):
     point: str = Field(description="'start' 또는 'end'")
+    mm: Optional[float] = Field(default=None, allow_inf_nan=False,
+                              description="보정 시작 위치 기준 상대 좌표(mm). 생략하면 현재 위치")
 
 
 @app.post("/rail/calibration/mark")
@@ -426,7 +428,7 @@ def rail_calibration_mark(req: MarkRequest):
     순서는 상관없고, 다시 찍으면 덮어쓴다. 어느 쪽을 먼저 찍었든 좌표가 낮은
     쪽이 0 이 된다.
     """
-    return _rail_call(rail.mark_calibration_point, req.point)
+    return _rail_call(rail.mark_calibration_point, req.point, req.mm)
 
 
 @app.post("/rail/calibration/end")
