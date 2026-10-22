@@ -8,6 +8,7 @@ GPIO·시리얼 같은 하드웨어 라이브러리를 import 하지 않는다. 
 """
 
 import asyncio
+import base64
 import contextlib
 import json
 import os
@@ -217,6 +218,50 @@ async def rail_stop(device_id: str = "pi2"):
     # 동기 HTTP 를 이벤트 루프 밖에서 돌린다.
     pi = await asyncio.to_thread(_post_pi_stop, base.rstrip("/") + "/rail/stop")
     return {"cancelled": cancelled["id"] if cancelled else None, "pi": pi}
+
+
+# --- 로봇 카메라 (web_video_server 스냅샷 중계) ----------------------------------
+# agent.launch.py 가 띄우는 web_video_server(:8080)에서 최신 프레임을 JPEG 로 받아 온다.
+# 토픽은 config/main.yaml 의 omx_dual 프로필과 같다(압축 전 raw 토픽).
+VIDEO_URL = os.environ.get("VIDEO_URL", "http://127.0.0.1:8080")
+CAMERAS = {
+    "top": "/camera1/color/image_raw",       # 탑뷰 RealSense RGB (cam_head)
+    "top_depth": "/camera4/image_raw",       # 탑뷰 깊이를 색으로 바꾼 영상 (cam_head_depth, depth_to_rgb.py)
+    "wrist_left": "/camera2/image_raw",      # cam_wrist_left
+    "wrist_right": "/camera3/image_raw",     # cam_wrist_right
+}
+
+
+def _snapshot(name):
+    if name not in CAMERAS:
+        raise HTTPException(status_code=404, detail=f"카메라 이름은 {list(CAMERAS)} 중 하나")
+    url = f"{VIDEO_URL}/snapshot?topic={CAMERAS[name]}&quality=90"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as r:
+            jpeg = r.read()
+    except (urllib.error.URLError, OSError) as exc:
+        raise HTTPException(status_code=503, detail=f"{name}({CAMERAS[name]}) 영상 없음: {exc}") from exc
+    if not jpeg.startswith(b"\xff\xd8"):
+        raise HTTPException(status_code=503, detail=f"{name}({CAMERAS[name]}) 영상 없음")
+    return jpeg
+
+
+@app.get("/camera/{name}", responses={200: {"content": {"image/jpeg": {}}}}, response_class=Response)
+def camera(name: str):
+    """top / top_depth / wrist_left / wrist_right 의 최신 프레임 JPEG."""
+    return Response(content=_snapshot(name), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/cameras")
+def cameras():
+    """네 카메라를 한 번에. {name: {"jpeg_base64"} | {"error"}}. 하나가 없어도 나머지는 준다."""
+    out = {}
+    for name in CAMERAS:
+        try:
+            out[name] = {"jpeg_base64": base64.b64encode(_snapshot(name)).decode()}
+        except HTTPException as exc:
+            out[name] = {"error": exc.detail}
+    return out
 
 
 # --- 스마트폰 -----------------------------------------------------------------
